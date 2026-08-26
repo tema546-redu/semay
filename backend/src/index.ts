@@ -23,6 +23,27 @@ app.use(
     origin: [
       "http://localhost:5173",
       "https://semaii.netlify.app",
+    ],
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-admin-key"],
+  })
+)
+
+// Answer preflight for all routes
+app.options("*", cors({
+  origin: [
+    "http://localhost:5173",
+    "https://semaii.netlify.app",
+  ],
+  credentials: true,
+}))
+
+app.use(
+  cors({
+    origin: [
+      "http://localhost:5173",
+      "https://semaii.netlify.app",
       process.env.FRONTEND_URL,
     ].filter(Boolean) as string[],
     credentials: true,
