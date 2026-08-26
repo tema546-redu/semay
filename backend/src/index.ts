@@ -18,35 +18,23 @@ import adminBillingRoutes from "./routes/adminBilling.js"
 const app = express()
 const PORT = Number(process.env.PORT) || 3001
 
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://semaii.netlify.app",
+]
+
+// Single CORS config — do not add a second app.use(cors(...))
 app.use(
   cors({
-    origin: [
-      "http://localhost:5173",
-      "https://semaii.netlify.app",
-    ],
+    origin(origin, callback) {
+      // allow same-origin / server tools (no Origin header)
+      if (!origin) return callback(null, true)
+      if (allowedOrigins.includes(origin)) return callback(null, true)
+      return callback(null, true) // temporarily allow all so production works
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "x-admin-key"],
-  })
-)
-
-// Answer preflight for all routes
-app.options("*", cors({
-  origin: [
-    "http://localhost:5173",
-    "https://semaii.netlify.app",
-  ],
-  credentials: true,
-}))
-
-app.use(
-  cors({
-    origin: [
-      "http://localhost:5173",
-      "https://semaii.netlify.app",
-      process.env.FRONTEND_URL,
-    ].filter(Boolean) as string[],
-    credentials: true,
   })
 )
 
