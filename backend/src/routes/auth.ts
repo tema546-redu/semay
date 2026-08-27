@@ -40,7 +40,6 @@ router.post("/register", async (req, res) => {
         },
       })
 
-      // Create trial subscription (7 days)
       const endDate = new Date()
       endDate.setDate(endDate.getDate() + 3)
 
@@ -65,7 +64,6 @@ router.post("/register", async (req, res) => {
         },
       })
 
-      // If school type, create school record
       if (data.businessType === "SCHOOL" || data.businessType === "UNIVERSITY") {
         await tx.school.create({
           data: {
@@ -94,6 +92,8 @@ router.post("/register", async (req, res) => {
         email: result.user.email,
         role: result.user.role,
         preferredLang: result.user.preferredLang,
+        phone: null,
+        avatarUrl: null,
       },
       organization: {
         id: result.organization.id,
@@ -138,6 +138,8 @@ router.post("/login", async (req, res) => {
         email: user.email,
         role: user.role,
         preferredLang: user.preferredLang,
+        phone: user.phone,
+        avatarUrl: user.avatarUrl,
       },
       organization: user.organization
         ? {
@@ -154,7 +156,7 @@ router.post("/login", async (req, res) => {
   }
 })
 
-// Me
+// GET /me
 router.get("/me", authenticate, async (req, res) => {
   const user = await prisma.user.findUnique({
     where: { id: req.user!.userId },
@@ -163,17 +165,20 @@ router.get("/me", authenticate, async (req, res) => {
   if (!user) return res.status(404).json({ error: "User not found" })
 
   res.json({
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    role: user.role,
-    preferredLang: user.preferredLang,
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      preferredLang: user.preferredLang,
+      phone: user.phone,
+      avatarUrl: user.avatarUrl,
+    },
     organization: user.organization,
   })
 })
 
-// GET /api/auth/me already returns user — ensure avatarUrl, phone
-
+// PATCH /me — name, phone, avatar
 router.patch("/me", authenticate, async (req, res) => {
   try {
     const data = z
@@ -186,7 +191,11 @@ router.patch("/me", authenticate, async (req, res) => {
 
     const user = await prisma.user.update({
       where: { id: req.user!.userId },
-      data,
+      data: {
+        ...(data.name != null ? { name: data.name } : {}),
+        ...(data.phone != null ? { phone: data.phone } : {}),
+        ...(data.avatarUrl != null ? { avatarUrl: data.avatarUrl } : {}),
+      },
       select: {
         id: true,
         name: true,
@@ -194,11 +203,14 @@ router.patch("/me", authenticate, async (req, res) => {
         phone: true,
         role: true,
         avatarUrl: true,
+        preferredLang: true,
       },
     })
+
     res.json({ user })
   } catch (e: any) {
     if (e.name === "ZodError") return res.status(400).json({ error: e.errors })
+    console.error(e)
     res.status(500).json({ error: "Failed to update profile" })
   }
 })
