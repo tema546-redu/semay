@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum Role {
@@ -168,6 +169,8 @@ model Order {
   staff          User?        @relation("StaffOrders", fields: [staffId], references: [id])
   items          OrderItem[]
   paymentMethod String?
+  paymentReceipt String?
+  paidAt         DateTime?
 }
 
 model OrderItem {

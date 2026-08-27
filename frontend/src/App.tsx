@@ -25,6 +25,7 @@ import Join from "./pages/Join"
 import TablesPage from "./pages/restaurant/Tables"
 import AdminApprove from "./pages/AdminApprove"
 import Profile from "./pages/Profile"
+import Expenses from "./pages/restaurant/Expenses"
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, loading } = useAuth()
@@ -67,6 +68,7 @@ function App() {
       <Route path="/join/:code" element={<Join />} />
       <Route path="/tables" element={<ProtectedRoute><TablesPage /></ProtectedRoute>} />
       <Route path="/admin/approve" element={<AdminApprove />} />
+      <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
       <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
     </Routes>
   )

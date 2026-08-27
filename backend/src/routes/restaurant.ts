@@ -7,7 +7,7 @@ import { OrderStatus, Role } from "@prisma/client"
 const router = Router()
 router.use(authenticate, requireOrganization)
 
-// ——— Settings: open/close hours ———
+// ——— Settings ———
 router.get("/settings", async (req, res) => {
   const org = await prisma.organization.findUnique({
     where: { id: req.user!.organizationId! },
@@ -22,10 +22,12 @@ router.get("/settings", async (req, res) => {
 
 router.patch("/settings", requireRole(Role.OWNER, Role.MANAGER), async (req, res) => {
   try {
-    const data = z.object({
-      openTime: z.string().optional(),
-      closeTime: z.string().optional(),
-    }).parse(req.body)
+    const data = z
+      .object({
+        openTime: z.string().optional(),
+        closeTime: z.string().optional(),
+      })
+      .parse(req.body)
     const org = await prisma.organization.update({
       where: { id: req.user!.organizationId! },
       data,
@@ -57,14 +59,16 @@ router.get("/reservations", async (req, res) => {
 
 router.post("/reservations", requireRole(Role.OWNER, Role.MANAGER, Role.WAITER, Role.STAFF), async (req, res) => {
   try {
-    const data = z.object({
-      guestName: z.string().min(1),
-      phone: z.string().optional(),
-      partySize: z.number().int().positive().default(2),
-      tableNumber: z.string().optional(),
-      dateTime: z.string(),
-      notes: z.string().optional(),
-    }).parse(req.body)
+    const data = z
+      .object({
+        guestName: z.string().min(1),
+        phone: z.string().optional(),
+        partySize: z.number().int().positive().default(2),
+        tableNumber: z.string().optional(),
+        dateTime: z.string(),
+        notes: z.string().optional(),
+      })
+      .parse(req.body)
 
     const reservation = await prisma.reservation.create({
       data: {
@@ -87,19 +91,18 @@ router.post("/reservations", requireRole(Role.OWNER, Role.MANAGER, Role.WAITER, 
 
 router.patch("/reservations/:id/status", requireRole(Role.OWNER, Role.MANAGER, Role.WAITER, Role.STAFF), async (req, res) => {
   try {
-    const { status } = z.object({
-      status: z.enum(["pending", "confirmed", "seated", "cancelled", "completed"]),
-    }).parse(req.body)
+    const { status } = z
+      .object({
+        status: z.enum(["pending", "confirmed", "seated", "cancelled", "completed"]),
+      })
+      .parse(req.body)
     const organizationId = req.user!.organizationId!
     const id = req.params.id as string
-
-    const r = await prisma.reservation.findFirst({ 
-      where: { id, organizationId }
-     })
+    const r = await prisma.reservation.findFirst({ where: { id, organizationId } })
     if (!r) return res.status(404).json({ error: "Not found" })
     const updated = await prisma.reservation.update({ where: { id: r.id }, data: { status } })
     res.json(updated)
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: "Failed" })
   }
 })
@@ -115,7 +118,7 @@ router.get("/staff", async (req, res) => {
   res.json(staff)
 })
 
-// ——— Analytics: last 7 days + health ———
+// ——— Analytics (7-day chart) ———
 router.get("/analytics", async (req, res) => {
   const organizationId = req.user!.organizationId!
   const days = 7
@@ -214,7 +217,6 @@ router.get("/analytics", async (req, res) => {
   if (activeOrders < 20) health += 10
   health = Math.min(100, health)
 
-  // Next reservations today
   const dayEnd = new Date(todayStart)
   dayEnd.setHours(23, 59, 59, 999)
   const upcomingReservations = await prisma.reservation.findMany({
@@ -261,10 +263,57 @@ router.get("/analytics", async (req, res) => {
   })
 })
 
-// Tables (simple status map stored as JSON on org — or separate model)
-// Using MenuItem-style: we'll use a lightweight Table model if exists; else in-memory via notes field is bad.
-// Prefer Prisma model DiningTable — if you don't have it, add to schema:
+// ——— Payment report (cash / telebirr / photos) ———
+router.get("/payment-report", async (req, res) => {
+  const organizationId = req.user!.organizationId!
+  const since = new Date()
+  since.setDate(since.getDate() - 7)
 
+  const orders = await prisma.order.findMany({
+    where: {
+      organizationId,
+      createdAt: { gte: since },
+      status: { not: OrderStatus.CANCELLED },
+    },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      tableNumber: true,
+      total: true,
+      paymentMethod: true,
+      paymentReceipt: true,
+      paidAt: true,
+      createdAt: true,
+      status: true,
+    },
+  })
+
+  const byMethod: Record<string, number> = {}
+  for (const o of orders) {
+    const m = o.paymentMethod || "unknown"
+    byMethod[m] = (byMethod[m] || 0) + Number(o.total)
+  }
+
+  res.json({ orders, byMethod })
+})
+
+router.post("/cleanup-receipts", requireRole(Role.OWNER, Role.MANAGER), async (req, res) => {
+  const organizationId = req.user!.organizationId!
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - 7)
+
+  const result = await prisma.order.updateMany({
+    where: {
+      organizationId,
+      paidAt: { lt: cutoff },
+      paymentReceipt: { not: null },
+    },
+    data: { paymentReceipt: null },
+  })
+  res.json({ ok: true, cleared: result.count })
+})
+
+// ——— Tables ———
 router.get("/tables", async (req, res) => {
   const organizationId = req.user!.organizationId!
   try {
@@ -291,92 +340,10 @@ router.post("/tables", requireRole(Role.OWNER, Role.MANAGER), async (req, res) =
     })
     res.status(201).json(table)
   } catch (e: any) {
-    res.status(400).json({ error: e.message || "Add DiningTable model or use free/busy only after schema" })
+    res.status(400).json({ error: e.message || "DiningTable model missing" })
   }
 })
 
 router.patch("/tables/:id", requireRole(Role.OWNER, Role.MANAGER, Role.WAITER, Role.STAFF), async (req, res) => {
   try {
-    const id = String(req.params.id)
-    const { status } = z.object({ status: z.enum(["free", "busy", "reserved"]) }).parse(req.body)
-    const updated = await (prisma as any).diningTable.update({
-      where: { id },
-      data: { status },
-    })
-    res.json(updated)
-  } catch {
-    res.status(400).json({ error: "Failed" })
-  }
-})
-
-router.get("/expenses", async (req, res) => {
-  const list = await prisma.expense.findMany({
-    where: { organizationId: req.user!.organizationId! },
-    orderBy: { createdAt: "desc" },
-    take: 50,
-  })
-  res.json(list)
-})
-
-router.post("/expenses", requireRole(Role.OWNER, Role.MANAGER), async (req, res) => {
-  const data = z.object({
-    name: z.string().min(1),
-    amount: z.number().positive(),
-    note: z.string().optional(),
-  }).parse(req.body)
-  const row = await prisma.expense.create({
-    data: { ...data, organizationId: req.user!.organizationId! },
-  })
-  res.status(201).json(row)
-})
-
-// ——— Closing day report ———
-router.get("/closing-report", async (req, res) => {
-  const organizationId = req.user!.organizationId!
-  const todayStart = new Date()
-  todayStart.setHours(0, 0, 0, 0)
-
-  const orders = await prisma.order.findMany({
-    where: {
-      organizationId,
-      createdAt: { gte: todayStart },
-      status: { not: OrderStatus.CANCELLED },
-    },
-    include: { items: true },
-  })
-
-  const sales = orders.reduce((s, o) => s + Number(o.total), 0)
-  const itemCount: Record<string, number> = {}
-  for (const o of orders) {
-    for (const item of o.items) {
-      itemCount[item.name] = (itemCount[item.name] || 0) + item.quantity
-    }
-  }
-  const topItems = Object.entries(itemCount)
-    .map(([name, qty]) => ({ name, qty }))
-    .sort((a, b) => b.qty - a.qty)
-    .slice(0, 5)
-
-  // Rough cost estimate (40% COGS assumption for demo profit)
-  const estimatedCost = sales * 0.4
-  const estimatedProfit = sales - estimatedCost
-
-  const org = await prisma.organization.findUnique({ where: { id: organizationId } })
-
-  res.json({
-    date: todayStart.toISOString().slice(0, 10),
-    restaurant: org?.name,
-    openTime: org?.openTime || "08:00",
-    closeTime: org?.closeTime || "22:00",
-    totalSales: Math.round(sales * 100) / 100,
-    totalOrders: orders.length,
-    estimatedCost: Math.round(estimatedCost * 100) / 100,
-    estimatedProfit: Math.round(estimatedProfit * 100) / 100,
-    isProfit: estimatedProfit >= 0,
-    topItems,
-    generatedAt: new Date().toISOString(),
-  })
-})
-
-export default router
-
+    const id = 

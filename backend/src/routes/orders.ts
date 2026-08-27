@@ -111,30 +111,70 @@ router.get("/active", async (req, res) => {
   res.json(orders)
 })
 
-router.patch("/:id/status", requireRole(Role.OWNER, Role.MANAGER, Role.KITCHEN, Role.STAFF, Role.WAITER), async (req, res) => {
-  try {
-    const id = String(req.params.id)
-    const { status } = z.object({ status: z.nativeEnum(OrderStatus) }).parse(req.body)
-    const organizationId = req.user!.organizationId!
+// PATCH /api/orders/:id/payment
+router.patch("/:id/payment", requireRole(Role.OWNER, Role.MANAGER, Role.WAITER, Role.STAFF), async (req, res) => {
+  const body = z.object({
+    paymentMethod: z.enum(["cash", "telebirr", "cbe", "card"]),
+    paymentReceipt: z.string().optional(), // photo data URL
+  }).parse(req.body)
 
-    const order = await prisma.order.findFirst({ where: { id, organizationId } })
-    if (!order) return res.status(404).json({ error: "Order not found" })
-
-    const updated = await prisma.order.update({
-      where: { id: order.id },
-      data: {
-        status,
-        ...(status === OrderStatus.READY
-          ? { items: { updateMany: { where: {}, data: { status: ItemStatus.READY } } } }
-          : {}),
-      },
-      include: { items: true },
-    })
-    res.json(updated)
-  } catch (err: any) {
-    if (err.name === "ZodError") return res.status(400).json({ error: err.errors })
-    res.status(500).json({ error: "Failed to update status" })
-  }
+  const order = await prisma.order.updateMany({
+    where: { id: req.params.id, organizationId: req.user!.organizationId! },
+    data: {
+      paymentMethod: body.paymentMethod,
+      paymentReceipt: body.paymentReceipt || null,
+      paidAt: new Date(),
+    },
+  })
+  if (!order.count) return res.status(404).json({ error: "Not found" })
+  res.json({ ok: true })
 })
 
-export default router
+// GET /api/restaurant/payment-report?from=&to=
+router.get("/payment-report", async (req, res) => {
+  const organizationId = req.user!.organizationId!
+  const since = new Date()
+  since.setDate(since.getDate() - 7)
+
+  const orders = await prisma.order.findMany({
+    where: {
+      organizationId,
+      createdAt: { gte: since },
+      status: { not: "CANCELLED" },
+    },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      tableNumber: true,
+      total: true,
+      paymentMethod: true,
+      paymentReceipt: true,
+      paidAt: true,
+      createdAt: true,
+      status: true,
+    },
+  })
+
+  const byMethod: Record<string, number> = {}
+  for (const o of orders) {
+    const m = o.paymentMethod || "unknown"
+    byMethod[m] = (byMethod[m] || 0) + Number(o.total)
+  }
+
+  res.json({ orders, byMethod })
+})
+
+// Optional: delete receipts older than 7 days
+router.post("/cleanup-receipts", requireRole(Role.OWNER, Role.MANAGER), async (req, res) => {
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - 7)
+  await prisma.order.updateMany({
+    where: {
+      organizationId: req.user!.organizationId!,
+      paidAt: { lt: cutoff },
+      paymentReceipt: { not: null },
+    },
+    data: { paymentReceipt: null },
+  })
+  res.json({ ok: true })
+})

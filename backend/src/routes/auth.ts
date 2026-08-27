@@ -181,7 +181,6 @@ router.patch("/me", authenticate, async (req, res) => {
         name: z.string().min(2).optional(),
         phone: z.string().optional(),
         avatarUrl: z.string().optional(),
-        preferredLang: z.string().optional(),
       })
       .parse(req.body)
 
@@ -195,12 +194,12 @@ router.patch("/me", authenticate, async (req, res) => {
         phone: true,
         role: true,
         avatarUrl: true,
-        preferredLang: true,
       },
     })
-    res.json(user)
+    res.json({ user })
   } catch (e: any) {
-    res.status(400).json({ error: e.message || "Failed" })
+    if (e.name === "ZodError") return res.status(400).json({ error: e.errors })
+    res.status(500).json({ error: "Failed to update profile" })
   }
 })
 
