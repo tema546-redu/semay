@@ -22,7 +22,6 @@ const loginSchema = z.object({
   password: z.string().min(1),
 })
 
-// Register Owner + Organization
 router.post("/register", async (req, res) => {
   try {
     const data = registerSchema.parse(req.body)
@@ -108,7 +107,6 @@ router.post("/register", async (req, res) => {
   }
 })
 
-// Login
 router.post("/login", async (req, res) => {
   try {
     const data = loginSchema.parse(req.body)
@@ -156,7 +154,6 @@ router.post("/login", async (req, res) => {
   }
 })
 
-// GET /me
 router.get("/me", authenticate, async (req, res) => {
   const user = await prisma.user.findUnique({
     where: { id: req.user!.userId },
@@ -178,23 +175,22 @@ router.get("/me", authenticate, async (req, res) => {
   })
 })
 
-// PATCH /me — name, phone, avatar
 router.patch("/me", authenticate, async (req, res) => {
   try {
     const data = z
       .object({
         name: z.string().min(2).optional(),
-        phone: z.string().optional(),
-        avatarUrl: z.string().optional(),
+        phone: z.string().nullable().optional(),
+        avatarUrl: z.string().nullable().optional(),
       })
       .parse(req.body)
 
     const user = await prisma.user.update({
       where: { id: req.user!.userId },
       data: {
-        ...(data.name != null ? { name: data.name } : {}),
-        ...(data.phone != null ? { phone: data.phone } : {}),
-        ...(data.avatarUrl != null ? { avatarUrl: data.avatarUrl } : {}),
+        ...(data.name !== undefined ? { name: data.name } : {}),
+        ...(data.phone !== undefined ? { phone: data.phone } : {}),
+        ...(data.avatarUrl !== undefined ? { avatarUrl: data.avatarUrl } : {}),
       },
       select: {
         id: true,
