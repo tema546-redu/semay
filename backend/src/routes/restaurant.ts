@@ -346,4 +346,16 @@ router.post("/tables", requireRole(Role.OWNER, Role.MANAGER), async (req, res) =
 
 router.patch("/tables/:id", requireRole(Role.OWNER, Role.MANAGER, Role.WAITER, Role.STAFF), async (req, res) => {
   try {
-    const id = 
+    const id = String(req.params.id)
+    const { status } = z.object({ status: z.enum(["free", "busy", "reserved"]) }).parse(req.body)
+    const updated = await (prisma as any).diningTable.update({
+      where: { id },
+      data: { status },
+    })
+    res.json(updated)
+  } catch {
+    res.status(400).json({ error: "Failed" })
+  }
+})
+
+export default router
