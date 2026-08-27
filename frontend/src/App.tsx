@@ -26,6 +26,12 @@ import TablesPage from "./pages/restaurant/Tables"
 import AdminApprove from "./pages/AdminApprove"
 import Profile from "./pages/Profile"
 import Expenses from "./pages/restaurant/Expenses"
+import Reports from "./pages/restaurant/Reports"
+import BakeryDashboard from "./pages/bakery/BakeryDashboard"
+import BakeryProducts from "./pages/bakery/Products"
+import BakeryProduce from "./pages/bakery/Produce"
+import BakerySell from "./pages/bakery/Sell"
+import BakeryWaste from "./pages/bakery/Waste"
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, loading } = useAuth()
@@ -69,7 +75,28 @@ function App() {
       <Route path="/tables" element={<ProtectedRoute><TablesPage /></ProtectedRoute>} />
       <Route path="/admin/approve" element={<AdminApprove />} />
       <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-      <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+      <Route path="/bakery" element={<ProtectedRoute><BakeryDashboard /></ProtectedRoute>} />
+<Route path="/bakery/products" element={<ProtectedRoute><BakeryProducts /></ProtectedRoute>} />
+<Route path="/bakery/produce" element={<ProtectedRoute><BakeryProduce /></ProtectedRoute>} />
+<Route path="/bakery/sell" element={<ProtectedRoute><BakerySell /></ProtectedRoute>} />
+<Route path="/bakery/waste" element={<ProtectedRoute><BakeryWaste /></ProtectedRoute>} />
+      <Route
+  path="/expenses"
+  element={
+    <ProtectedRoute>
+      <Expenses />
+    </ProtectedRoute>
+  }
+/>
+<Route
+  path="/reports"
+  element={
+    <ProtectedRoute>
+      <Reports />
+    </ProtectedRoute>
+  }
+/>
+      
     </Routes>
   )
 }

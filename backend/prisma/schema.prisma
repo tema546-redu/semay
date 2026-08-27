@@ -95,8 +95,6 @@ model Organization {
   country   String       @default("Ethiopia")
   phone     String?
   currency  String       @default("ETB")
-  openTime  String?      // "08:00"
-  closeTime String?      // "22:00"
   logo      String?
   latitude  Float?
   longitude Float?
@@ -116,6 +114,12 @@ model Organization {
   reservations  Reservation[]
   diningTables DiningTable[]
   expenses     Expense[]
+  openTime  String?  @default("08:00")
+  closeTime String?  @default("22:00")
+  bakeryProducts    BakeryProduct[]
+  bakeryProductions BakeryProduction[]
+  bakeryWastes      BakeryWaste[]
+  bakerySales       BakerySale[]
 }
 
 model Subscription {
@@ -419,4 +423,65 @@ model Expense {
   createdAt      DateTime @default(now())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model BakeryProduct {
+  id             String   @id @default(cuid())
+  name           String
+  nameAm         String?
+  price          Decimal  @db.Decimal(12, 2)
+  stockQty       Int      @default(0)
+  available      Boolean  @default(true)
+  category       String   @default("Bread")
+  imageUrl       String?
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model BakeryProduction {
+  id             String   @id @default(cuid())
+  productId      String
+  productName    String
+  quantity       Int
+  note           String?
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdById    String?
+  createdAt      DateTime @default(now())
+}
+
+model BakeryWaste {
+  id             String   @id @default(cuid())
+  productId      String
+  productName    String
+  quantity       Int
+  reason         String?
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdById    String?
+  createdAt      DateTime @default(now())
+}
+
+model BakerySale {
+  id             String   @id @default(cuid())
+  tableOrCounter String   @default("Counter")
+  total          Decimal  @db.Decimal(12, 2)
+  paymentMethod  String?  // cash | telebirr | cbe | card
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  staffId        String?
+  createdAt      DateTime @default(now())
+  items          BakerySaleItem[]
+}
+
+model BakerySaleItem {
+  id        String     @id @default(cuid())
+  saleId    String
+  sale      BakerySale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  productId String?
+  name      String
+  quantity  Int
+  price     Decimal    @db.Decimal(12, 2)
 }

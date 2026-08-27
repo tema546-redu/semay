@@ -135,7 +135,7 @@ export const gymClassApi = {
 export const restaurantApi = {
   analytics: () => request<any>("/api/restaurant/analytics"),
   settings: () => request<any>("/api/restaurant/settings"),
-  updateSettings: (data: any) =>
+  updateSettings: (data: { openTime?: string; closeTime?: string }) =>
     request<any>("/api/restaurant/settings", {
       method: "PATCH",
       body: JSON.stringify(data),
@@ -150,6 +150,8 @@ export const expensesApi = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+  remove: (id: string) =>
+    request<any>(`/api/restaurant/expenses/${id}`, { method: "DELETE" }),
 }
 
 export const billingApi = {
@@ -208,4 +210,19 @@ export const reservationsApi = {
     }),
   remove: (id: string) =>
     request<any>(`/api/reservations/${id}`, { method: "DELETE" }),
+}
+
+export const bakeryApi = {
+  products: () => request<any[]>("/api/bakery/products"),
+  createProduct: (data: any) =>
+    request("/api/bakery/products", { method: "POST", body: JSON.stringify(data) }),
+  updateProduct: (id: string, data: any) =>
+    request(`/api/bakery/products/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  produce: (data: { productId: string; quantity: number; note?: string }) =>
+    request("/api/bakery/produce", { method: "POST", body: JSON.stringify(data) }),
+  waste: (data: { productId: string; quantity: number; reason?: string }) =>
+    request("/api/bakery/waste", { method: "POST", body: JSON.stringify(data) }),
+  sell: (data: any) =>
+    request("/api/bakery/sell", { method: "POST", body: JSON.stringify(data) }),
+  dashboard: () => request<any>("/api/bakery/dashboard"),
 }

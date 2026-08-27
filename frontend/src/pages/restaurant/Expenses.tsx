@@ -22,7 +22,7 @@ export default function Expenses() {
     setBusy(true)
     try {
       await expensesApi.create({
-        name,
+        name: name.trim(),
         amount: Number(amount),
         note: note || undefined,
       })

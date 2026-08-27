@@ -86,7 +86,7 @@ router.patch(
       const id = String(req.params.id)
       const { status } = z
         .object({
-          status: z.enum(["SENT", "PREPARING", "READY", "SERVED", "CANCELLED"]),
+          status: z.enum(["OPEN", "SENT", "PREPARING", "READY", "PAID", "CANCELLED"]),
         })
         .parse(req.body)
 

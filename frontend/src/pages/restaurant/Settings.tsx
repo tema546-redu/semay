@@ -24,7 +24,10 @@ export default function RestaurantSettings() {
     setSaving(true)
     setMsg("")
     try {
-      await restaurantApi.updateSettings({ openTime, closeTime })
+      await restaurantApi.updateSettings({
+        openTime,  // "09:00"
+        closeTime, // "23:00"
+      })
       setMsg(isAm ? "ተቀምጧል" : "Saved")
     } catch {
       setMsg("Failed")

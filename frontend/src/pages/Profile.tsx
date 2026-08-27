@@ -12,13 +12,16 @@ export default function Profile() {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    authApi.me().then((d) => {
-      const u = d.user || d
-      setName(u.name || "")
-      setPhone(u.phone || "")
-      setEmail(u.email || "")
-      setAvatarUrl(u.avatarUrl || "")
-    }).catch(console.error)
+    authApi
+      .me()
+      .then((d) => {
+        const u = d.user || d
+        setName(u.name || "")
+        setPhone(u.phone || "")
+        setEmail(u.email || "")
+        setAvatarUrl(u.avatarUrl || "")
+      })
+      .catch(console.error)
   }, [])
 
   const onPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -38,12 +41,27 @@ export default function Profile() {
     setSaving(true)
     setMsg("")
     try {
-      await authApi.updateMe({ name, phone, avatarUrl })
+      await authApi.updateMe({
+        name: name.trim(),
+        phone: phone.trim() || null,
+        avatarUrl: avatarUrl || null,
+      })
       setMsg("Saved")
     } catch (err: any) {
       setMsg(err.message || "Failed")
     } finally {
       setSaving(false)
+    }
+  }
+
+  const removePhoto = async () => {
+    setAvatarUrl("")
+    setMsg("")
+    try {
+      await authApi.updateMe({ avatarUrl: null })
+      setMsg("Photo removed")
+    } catch (err: any) {
+      setMsg(err.message || "Failed to remove photo")
     }
   }
 
@@ -67,31 +85,45 @@ export default function Profile() {
               </div>
             )}
           </div>
-          <input type="file" accept="image/*" onChange={onPhoto} className="text-sm" />
+
+          <div className="space-y-2">
+            <input type="file" accept="image/*" onChange={onPhoto} className="text-sm" />
+            {avatarUrl && (
+              <button
+                type="button"
+                onClick={removePhoto}
+                className="block text-sm text-red-600 hover:underline"
+              >
+                Remove photo
+              </button>
+            )}
+          </div>
         </div>
 
         <div>
-          <label className="text-xs font-medium text-slate-500">Name</label>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Name</label>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="mt-1 w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm"
+            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm"
           />
         </div>
+
         <div>
-          <label className="text-xs font-medium text-slate-500">Phone</label>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Phone</label>
           <input
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            className="mt-1 w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm"
+            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm"
           />
         </div>
+
         <div>
-          <label className="text-xs font-medium text-slate-500">Email</label>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Email</label>
           <input
             value={email}
             disabled
-            className="mt-1 w-full px-3.5 py-2.5 rounded-xl border border-slate-100 text-sm bg-slate-50 text-slate-500"
+            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-100 text-sm bg-slate-50 text-slate-500"
           />
         </div>
 

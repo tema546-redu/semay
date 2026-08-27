@@ -14,6 +14,7 @@ import billingRoutes from "./routes/billing.js"
 import reservationRoutes from "./routes/reservations.js"
 import staffRoutes from "./routes/staff.js"
 import adminBillingRoutes from "./routes/adminBilling.js"
+import bakeryRoutes from "./routes/bakery.js"
 
 const app = express()
 const PORT = Number(process.env.PORT) || 3001
@@ -104,6 +105,7 @@ app.use("/api/billing", billingRoutes)
 app.use("/api/reservations", reservationRoutes)
 app.use("/api/staff", staffRoutes)
 app.use("/api/admin/billing", adminBillingRoutes)
+app.use("/api/bakery", bakeryRoutes)
 
 // ============================================================
 // 404

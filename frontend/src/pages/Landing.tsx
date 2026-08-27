@@ -137,7 +137,7 @@ export default function Landing() {
             <div className="flex flex-wrap gap-3">
               <Link
                 to="/register"
-                className="inline-flex items-center gap-2 bg-slate-900 text-white px-6 py-3 rounded-full font-medium hover:bg-slate-800 transition shadow-sm"
+                className="inline-flex items-center gap-2 bg-slate-900 text-white px-6 py-3 rounded-full font-medium hover:bg-slate-800 transition shadow-sm hover:shadow-md"
               >
                 {isAm ? "ነጻ ይጀምሩ" : "Start free trial"}
                 <ArrowRight className="w-4 h-4" />
@@ -163,7 +163,7 @@ export default function Landing() {
               return (
                 <div
                   key={b.titleEn}
-                  className="bg-white/75 backdrop-blur-sm border border-white/90 rounded-2xl p-5 shadow-sm hover:shadow transition"
+                  className="bg-white/75 backdrop-blur-sm border border-white/90 rounded-2xl p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200"
                 >
                   <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-700 mb-3">
                     <Icon className="w-5 h-5" />
@@ -183,7 +183,7 @@ export default function Landing() {
         {/* What you actually get */}
         <section className="relative z-10 max-w-5xl mx-auto px-6 pb-20">
           <div className="grid md:grid-cols-2 gap-4">
-            <div className="bg-white/80 border border-white rounded-2xl p-7 shadow-sm">
+            <div className="bg-white/80 border border-white rounded-2xl p-7 shadow-sm hover:shadow-md transition-shadow">
               <div className="w-11 h-11 rounded-xl bg-sky-50 flex items-center justify-center text-sky-700 mb-4">
                 <Building2 className="w-5 h-5" />
               </div>
@@ -198,7 +198,7 @@ export default function Landing() {
               </ul>
             </div>
 
-            <div className="bg-white/80 border border-white rounded-2xl p-7 shadow-sm">
+            <div className="bg-white/80 border border-white rounded-2xl p-7 shadow-sm hover:shadow-md transition-shadow">
               <div className="w-11 h-11 rounded-xl bg-violet-50 flex items-center justify-center text-violet-700 mb-4">
                 <GraduationCap className="w-5 h-5" />
               </div>

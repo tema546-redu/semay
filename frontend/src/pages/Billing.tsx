@@ -384,7 +384,7 @@ export default function Billing() {
                 <p className="text-xs text-semay-400">
                   {isAm
                     ? "ክፍያ አውቶማቲክ አይነቃም። Semay ካረጋገጠ በኋላ ይነቃል።"
-                    : "Does not activate automatically. Use /admin/approve to approve."}
+                    : "Does not activate automatically. after /admin/approve to approve."}
                 </p>
               </div>
             )}
