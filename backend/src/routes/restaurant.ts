@@ -7,7 +7,6 @@ import { OrderStatus, Role } from "@prisma/client"
 const router = Router()
 router.use(authenticate, requireOrganization)
 
-// ——— Settings ———
 router.get("/settings", async (req, res) => {
   const org = await prisma.organization.findUnique({
     where: { id: req.user!.organizationId! },
@@ -38,7 +37,6 @@ router.patch("/settings", requireRole(Role.OWNER, Role.MANAGER), async (req, res
   }
 })
 
-// ——— Reservations ———
 router.get("/reservations", async (req, res) => {
   const organizationId = req.user!.organizationId!
   const date = req.query.date as string | undefined
@@ -97,7 +95,7 @@ router.patch("/reservations/:id/status", requireRole(Role.OWNER, Role.MANAGER, R
       })
       .parse(req.body)
     const organizationId = req.user!.organizationId!
-    const id = req.params.id as string
+    const id = String(req.params.id)
     const r = await prisma.reservation.findFirst({ where: { id, organizationId } })
     if (!r) return res.status(404).json({ error: "Not found" })
     const updated = await prisma.reservation.update({ where: { id: r.id }, data: { status } })
@@ -107,7 +105,6 @@ router.patch("/reservations/:id/status", requireRole(Role.OWNER, Role.MANAGER, R
   }
 })
 
-// ——— Staff ———
 router.get("/staff", async (req, res) => {
   const organizationId = req.user!.organizationId!
   const staff = await prisma.user.findMany({
@@ -118,7 +115,6 @@ router.get("/staff", async (req, res) => {
   res.json(staff)
 })
 
-// ——— Analytics (7-day chart) ———
 router.get("/analytics", async (req, res) => {
   const organizationId = req.user!.organizationId!
   const days = 7
@@ -135,6 +131,8 @@ router.get("/analytics", async (req, res) => {
 
   const rangeStart = new Date(todayStart)
   rangeStart.setDate(rangeStart.getDate() - (days - 1))
+
+  const org = await prisma.organization.findUnique({ where: { id: organizationId } })
 
   const orders = await prisma.order.findMany({
     where: {
@@ -167,6 +165,35 @@ router.get("/analytics", async (req, res) => {
       orders: v.orders,
     }))
 
+  const todayKey = localDayKey(todayStart)
+
+  // Daily chart: today by hour
+  const hourlyToday: { hour: number; label: string; sales: number; orders: number }[] = []
+  for (let h = 0; h < 24; h++) {
+    hourlyToday.push({
+      hour: h,
+      label: `${String(h).padStart(2, "0")}:00`,
+      sales: 0,
+      orders: 0,
+    })
+  }
+  for (const o of orders) {
+    const created = new Date(o.createdAt)
+    if (localDayKey(created) !== todayKey) continue
+    const h = created.getHours()
+    hourlyToday[h].sales += Number(o.total)
+    hourlyToday[h].orders += 1
+  }
+  for (const row of hourlyToday) {
+    row.sales = Math.round(row.sales * 100) / 100
+  }
+
+  const openH = parseInt((org?.openTime || "08:00").slice(0, 2), 10) || 8
+  const closeH = parseInt((org?.closeTime || "22:00").slice(0, 2), 10) || 22
+  const hourlyChart = hourlyToday.filter(
+    (r) => (r.hour >= openH && r.hour <= closeH) || r.sales > 0 || r.orders > 0
+  )
+
   const itemCount: Record<string, { name: string; qty: number; revenue: number }> = {}
   for (const o of orders) {
     for (const item of o.items) {
@@ -185,7 +212,6 @@ router.get("/analytics", async (req, res) => {
     take: 10,
   })
 
-  const todayKey = localDayKey(todayStart)
   const todaySales = dailyMap[todayKey]?.sales || 0
   const todayOrderCount = dailyMap[todayKey]?.orders || 0
 
@@ -237,6 +263,7 @@ router.get("/analytics", async (req, res) => {
 
   res.json({
     last7Days,
+    hourlyChart,
     bestSellers,
     lowStock,
     today: {
@@ -263,7 +290,6 @@ router.get("/analytics", async (req, res) => {
   })
 })
 
-// ——— Payment report (cash / telebirr / photos) ———
 router.get("/payment-report", async (req, res) => {
   const organizationId = req.user!.organizationId!
   const since = new Date()
@@ -313,7 +339,6 @@ router.post("/cleanup-receipts", requireRole(Role.OWNER, Role.MANAGER), async (r
   res.json({ ok: true, cleared: result.count })
 })
 
-// ——— Tables ———
 router.get("/tables", async (req, res) => {
   const organizationId = req.user!.organizationId!
   try {
@@ -356,6 +381,49 @@ router.patch("/tables/:id", requireRole(Role.OWNER, Role.MANAGER, Role.WAITER, R
   } catch {
     res.status(400).json({ error: "Failed" })
   }
+})
+
+router.get("/expenses", async (req, res) => {
+  const list = await prisma.expense.findMany({
+    where: { organizationId: req.user!.organizationId! },
+    orderBy: { createdAt: "desc" },
+    take: 100,
+  })
+  res.json(list)
+})
+
+router.post("/expenses", requireRole(Role.OWNER, Role.MANAGER), async (req, res) => {
+  try {
+    const data = z
+      .object({
+        name: z.string().min(1),
+        amount: z.number().positive(),
+        note: z.string().optional(),
+      })
+      .parse(req.body)
+
+    const row = await prisma.expense.create({
+      data: {
+        name: data.name,
+        amount: data.amount,
+        note: data.note,
+        organizationId: req.user!.organizationId!,
+      },
+    })
+    res.status(201).json(row)
+  } catch (e: any) {
+    console.error("expense create", e)
+    if (e.name === "ZodError") return res.status(400).json({ error: e.errors })
+    res.status(500).json({ error: e.message || "Failed" })
+  }
+})
+
+router.delete("/expenses/:id", requireRole(Role.OWNER, Role.MANAGER), async (req, res) => {
+  const id = String(req.params.id)
+  await prisma.expense.deleteMany({
+    where: { id, organizationId: req.user!.organizationId! },
+  })
+  res.json({ ok: true })
 })
 
 export default router
