@@ -32,6 +32,9 @@ import BakeryProducts from "./pages/bakery/Products"
 import BakeryProduce from "./pages/bakery/Produce"
 import BakerySell from "./pages/bakery/Sell"
 import BakeryWaste from "./pages/bakery/Waste"
+import BakeryExpenses from "./pages/bakery/Expenses"
+import BakerySettings from "./pages/bakery/Settings"
+import BakeryReports from "./pages/bakery/Reports"
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, loading } = useAuth()
@@ -44,6 +47,7 @@ function SmartDashboard() {
   const { organization } = useAuth()
   const t = organization?.type
   if (t === "RESTAURANT" || t === "CAFE") return <RestaurantDashboard />
+  if (t === "BAKERY") return <BakeryDashboard />
   return <Dashboard />
 }
 
@@ -76,11 +80,14 @@ function App() {
       <Route path="/admin/approve" element={<AdminApprove />} />
       <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
       <Route path="/bakery" element={<ProtectedRoute><BakeryDashboard /></ProtectedRoute>} />
-<Route path="/bakery/products" element={<ProtectedRoute><BakeryProducts /></ProtectedRoute>} />
-<Route path="/bakery/produce" element={<ProtectedRoute><BakeryProduce /></ProtectedRoute>} />
-<Route path="/bakery/sell" element={<ProtectedRoute><BakerySell /></ProtectedRoute>} />
-<Route path="/bakery/waste" element={<ProtectedRoute><BakeryWaste /></ProtectedRoute>} />
-      <Route
+      <Route path="/bakery/products" element={<ProtectedRoute><BakeryProducts /></ProtectedRoute>} />
+      <Route path="/bakery/produce" element={<ProtectedRoute><BakeryProduce /></ProtectedRoute>} />
+      <Route path="/bakery/sell" element={<ProtectedRoute><BakerySell /></ProtectedRoute>} />
+      <Route path="/bakery/waste" element={<ProtectedRoute><BakeryWaste /></ProtectedRoute>} />
+      <Route path="/bakery/expenses" element={<ProtectedRoute><BakeryExpenses /></ProtectedRoute>} />
+      <Route path="/bakery/settings" element={<ProtectedRoute><BakerySettings /></ProtectedRoute>} />
+      <Route path="/bakery/reports" element={<ProtectedRoute><BakeryReports /></ProtectedRoute>} />
+    <Route
   path="/expenses"
   element={
     <ProtectedRoute>

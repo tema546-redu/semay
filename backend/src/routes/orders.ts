@@ -109,34 +109,47 @@ router.patch(
   }
 )
 
+/** Save payment method + receipt photo (data URL) for Reports page */
 router.patch(
   "/:id/payment",
   requireRole(Role.OWNER, Role.MANAGER, Role.WAITER, Role.STAFF),
   async (req, res) => {
     try {
       const id = String(req.params.id)
+      const organizationId = req.user!.organizationId!
+
       const body = z
         .object({
           paymentMethod: z.enum(["cash", "telebirr", "cbe", "card"]),
-          paymentReceipt: z.string().optional(),
+          paymentReceipt: z.string().max(2_500_000).optional().nullable(),
         })
         .parse(req.body)
 
-      const organizationId = req.user!.organizationId!
-      const result = await prisma.order.updateMany({
+      const existing = await prisma.order.findFirst({
         where: { id, organizationId },
+      })
+      if (!existing) return res.status(404).json({ error: "Order not found" })
+
+      const updated = await prisma.order.update({
+        where: { id: existing.id },
         data: {
           paymentMethod: body.paymentMethod,
-          paymentReceipt: body.paymentReceipt || null,
+          paymentReceipt: body.paymentReceipt ?? null,
           paidAt: new Date(),
-        },
+        } as any,
       })
-      if (!result.count) return res.status(404).json({ error: "Not found" })
-      res.json({ ok: true })
+
+      res.json({
+        ok: true,
+        id: updated.id,
+        paymentMethod: (updated as any).paymentMethod,
+        hasReceipt: !!(updated as any).paymentReceipt,
+        paidAt: (updated as any).paidAt,
+      })
     } catch (err: any) {
       if (err.name === "ZodError") return res.status(400).json({ error: err.errors })
-      console.error(err)
-      res.status(500).json({ error: "Failed" })
+      console.error("payment patch", err)
+      res.status(500).json({ error: err.message || "Failed to save payment" })
     }
   }
 )

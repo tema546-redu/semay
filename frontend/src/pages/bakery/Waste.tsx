@@ -1,139 +1,115 @@
 import { useEffect, useState } from "react"
+import { Link } from "react-router-dom"
+import { ArrowLeft } from "lucide-react"
 import { bakeryApi } from "../../lib/api"
 
-interface Product {
-  id: string
-  name: string
-  nameAm?: string
-  stockQty: number
-}
-
 export default function BakeryWaste() {
-  const [products, setProducts] = useState<Product[]>([])
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState("")
-  const [success, setSuccess] = useState("")
+  const [products, setProducts] = useState<any[]>([])
+  const [productId, setProductId] = useState("")
+  const [qty, setQty] = useState("1")
+  const [reason, setReason] = useState("")
+  const [msg, setMsg] = useState("")
+  const [busy, setBusy] = useState(false)
 
-  const [form, setForm] = useState({
-    productId: "",
-    quantity: "",
-    reason: "",
-  })
+  const load = () =>
+    bakeryApi.products().then((list) => {
+      setProducts(list || [])
+      if (list?.[0] && !productId) setProductId(list[0].id)
+    })
 
   useEffect(() => {
-    bakeryApi
-      .products()
-      .then((res: any) => {
-        setProducts(res)
-        setLoading(false)
-      })
-      .catch((err: any) => {
-        setError(err?.message || "Failed to load products")
-        setLoading(false)
-      })
+    load().catch(console.error)
   }, [])
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError("")
-    setSuccess("")
-    setSaving(true)
-
+    if (!productId) return
+    setBusy(true)
+    setMsg("")
     try {
       await bakeryApi.waste({
-        productId: form.productId,
-        quantity: Number(form.quantity),
-        reason: form.reason || undefined,
+        productId,
+        quantity: Number(qty),
+        reason: reason.trim() || undefined,
       })
-      setSuccess("Waste recorded and stock updated.")
-      setForm({ productId: "", quantity: "", reason: "" })
-      const updated: any = await bakeryApi.products()
-      setProducts(updated)
+      setMsg("Waste recorded · stock updated")
+      setQty("1")
+      setReason("")
+      load()
     } catch (err: any) {
-      setError(err?.message || "Failed to record waste")
+      setMsg(err.message || "Failed")
     } finally {
-      setSaving(false)
+      setBusy(false)
     }
   }
 
-  const selected = products.find((p) => p.id === form.productId)
-
   return (
-    <div className="p-6 max-w-xl">
-      <h1 className="text-2xl font-semibold text-gray-800 mb-6">Waste</h1>
+    <div className="min-h-svh bg-semay-50">
+      <header className="bg-white border-b h-14 px-4 flex items-center gap-3 sticky top-0 z-10">
+        <Link to="/bakery" className="p-2 -ml-2 rounded-lg hover:bg-semay-100">
+          <ArrowLeft className="w-5 h-5 text-semay-600" />
+        </Link>
+        <h1 className="font-semibold text-semay-900 text-sm">Waste</h1>
+      </header>
 
-      {error && (
-        <div className="mb-4 bg-red-50 text-red-700 px-4 py-3 rounded-lg border border-red-100">
-          {error}
-        </div>
-      )}
-      {success && (
-        <div className="mb-4 bg-rose-50 text-rose-700 px-4 py-3 rounded-lg border border-rose-100">
-          {success}
-        </div>
-      )}
+      <form onSubmit={submit} className="max-w-md mx-auto p-4 space-y-4">
+        <div className="bg-white border border-semay-100 rounded-2xl p-4 space-y-3 shadow-sm">
+          <p className="text-xs text-semay-500">
+            Record burned, broken, or thrown items. Stock will decrease.
+          </p>
 
-      <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
-        <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm text-gray-600 mb-1">Product</label>
+            <label className="block text-xs font-medium text-semay-500 mb-1">Product</label>
             <select
+              value={productId}
+              onChange={(e) => setProductId(e.target.value)}
+              className="w-full px-3.5 py-2.5 rounded-xl border border-semay-200 text-sm"
               required
-              value={form.productId}
-              onChange={(e) => setForm({ ...form, productId: e.target.value })}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400"
             >
-              <option value="">Select product</option>
+              {products.length === 0 && <option value="">No products</option>}
               {products.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.name} {p.nameAm ? `(${p.nameAm})` : ""} — current stock: {p.stockQty}
+                  {p.name} (stock {p.stockQty})
                 </option>
               ))}
             </select>
           </div>
 
           <div>
-            <label className="block text-sm text-gray-600 mb-1">Quantity Wasted</label>
+            <label className="block text-xs font-medium text-semay-500 mb-1">Quantity</label>
             <input
-              required
               type="number"
               min={1}
-              value={form.quantity}
-              onChange={(e) => setForm({ ...form, quantity: e.target.value })}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400"
-              placeholder="e.g. 5"
+              value={qty}
+              onChange={(e) => setQty(e.target.value)}
+              className="w-full px-3.5 py-2.5 rounded-xl border border-semay-200 text-sm"
+              required
             />
           </div>
 
           <div>
-            <label className="block text-sm text-gray-600 mb-1">Reason</label>
+            <label className="block text-xs font-medium text-semay-500 mb-1">Reason (optional)</label>
             <input
-              value={form.reason}
-              onChange={(e) => setForm({ ...form, reason: e.target.value })}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400"
-              placeholder="e.g. Burned / Expired / Damaged"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Burned, expired, broken…"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-semay-200 text-sm"
             />
           </div>
 
-          {selected && form.quantity && (
-            <div className="bg-rose-50 text-rose-800 px-3 py-2 rounded-lg text-sm">
-              After waste: <span className="font-semibold">{selected.name}</span> stock will be{" "}
-              <span className="font-semibold">
-                {Math.max(0, selected.stockQty - Number(form.quantity || 0))}
-              </span>
-            </div>
+          {msg && (
+            <p className="text-sm text-semay-700 bg-semay-50 rounded-xl px-3 py-2">{msg}</p>
           )}
 
           <button
             type="submit"
-            disabled={saving || loading}
-            className="px-4 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 disabled:opacity-50 text-sm"
+            disabled={busy || !productId}
+            className="w-full bg-semay-900 text-white py-3 rounded-xl text-sm font-medium disabled:opacity-50"
           >
-            {saving ? "Saving…" : "Record Waste"}
+            {busy ? "..." : "Record waste"}
           </button>
-        </form>
-      </div>
+        </div>
+      </form>
     </div>
   )
 }

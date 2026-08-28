@@ -9,7 +9,6 @@ export default function Billing() {
   const { i18n } = useTranslation()
   const isAm = i18n.language === "am"
   const [data, setData] = useState<any>(null)
-  const [pending, setPending] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<string | null>(null)
   const [amount, setAmount] = useState(0)
@@ -31,12 +30,6 @@ export default function Billing() {
       console.error(e)
     } finally {
       setLoading(false)
-    }
-    try {
-      const list = await billingApi.pending()
-      setPending(list || [])
-    } catch {
-      setPending([])
     }
   }
 
@@ -90,32 +83,6 @@ export default function Billing() {
       await load()
     } catch (e: any) {
       setMsg(e.message || "Failed")
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const approve = async (organizationId: string) => {
-    setBusy(true)
-    try {
-      await billingApi.approve(organizationId)
-      setMsg(isAm ? "ፀድቋል — ደንበኝነት ንቁ ነው" : "Approved — subscription ACTIVE")
-      await load()
-    } catch (e: any) {
-      setMsg(e.message || "Approve failed")
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const reject = async (organizationId: string) => {
-    setBusy(true)
-    try {
-      await billingApi.reject(organizationId)
-      setMsg(isAm ? "ተከልክሏል" : "Payment rejected")
-      await load()
-    } catch (e: any) {
-      setMsg(e.message || "Reject failed")
     } finally {
       setBusy(false)
     }
@@ -202,44 +169,6 @@ export default function Billing() {
 
             {msg && (
               <div className="bg-semay-900 text-white text-sm px-4 py-3 rounded-xl">{msg}</div>
-            )}
-
-            {pending.length > 0 && (
-              <div className="bg-white border border-amber-200 rounded-2xl p-5 space-y-3 shadow-sm">
-                <h2 className="font-semibold text-semay-900">
-                  {isAm ? "የሚጠብቁ ክፍያዎች" : "Pending approvals"}
-                </h2>
-                {pending.map((p) => (
-                  <div
-                    key={p.organizationId}
-                    className="border border-semay-100 rounded-xl p-3 text-sm space-y-1"
-                  >
-                    <div className="font-medium">{p.organizationName || p.organizationId}</div>
-                    <div className="text-semay-500">
-                      {p.plan} · {Number(p.amount).toLocaleString()} ETB · {p.paymentMethod}
-                    </div>
-                    <div className="font-mono text-xs">Ref: {p.paymentRef}</div>
-                    <div className="flex gap-2 pt-2">
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => approve(p.organizationId)}
-                        className="bg-semay-900 text-white text-xs px-3 py-1.5 rounded-full"
-                      >
-                        Approve
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => reject(p.organizationId)}
-                        className="border text-xs px-3 py-1.5 rounded-full"
-                      >
-                        Reject
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
             )}
 
             <div>
@@ -384,7 +313,7 @@ export default function Billing() {
                 <p className="text-xs text-semay-400">
                   {isAm
                     ? "ክፍያ አውቶማቲክ አይነቃም። Semay ካረጋገጠ በኋላ ይነቃል።"
-                    : "Does not activate automatically. after /admin/approve to approve."}
+                    : "Does not activate automatically. Semay activates after verification."}
                 </p>
               </div>
             )}
@@ -393,4 +322,4 @@ export default function Billing() {
       </div>
     </div>
   )
-}
+}         

@@ -33,7 +33,7 @@ export default function AiChat() {
           </h1>
           <p className="text-sm text-semay-500 leading-relaxed mb-6">
             {isAm
-              ? "እውነተኛ ብልህ AI ገና አልተገነባም። አሁን POS፣ ኩሽና፣ ምናሌ፣ ጂም እና ሆቴል ይጠቀሙ።"
+              ? "እውነተኛ ብልህ AI ገና አልተገነባም። አሁን POS፣ ኩሽና፣ ሜኑ፣ ጂም እና ሆቴል ይጠቀሙ።"
               : "Real intelligent AI is not built yet. Use POS, Kitchen, Menu, Gym, and Hotel for now."}
           </p>
           <Link

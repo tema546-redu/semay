@@ -47,7 +47,7 @@ const resources = {
       school: "ትምህርት ቤት",
       pos: "የሽያጭ ነጥብ",
       kitchen: "ኩሽና",
-      menu: "ምናሌ",
+      menu: "ሜኑ",
       staff: "ሰራተኞች",
       students: "ተማሪዎች",
       teachers: "መምህራን",

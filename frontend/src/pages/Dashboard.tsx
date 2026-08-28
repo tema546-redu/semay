@@ -2,10 +2,10 @@ import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useAuth } from "../lib/auth"
-import { dashboardApi, gymApi, hotelApi } from "../lib/api"
+import { dashboardApi, gymApi, hotelApi, bakeryApi } from "../lib/api"
 import {
   LayoutDashboard, UtensilsCrossed, GraduationCap, Users, Settings, LogOut, Globe,
-  Monitor, BookOpen, Dumbbell, UserCheck, BedDouble, Sparkles,
+  Monitor, BookOpen, Dumbbell, UserCheck, BedDouble, Sparkles, Croissant, Factory, Trash2,
 } from "lucide-react"
 
 export default function Dashboard() {
@@ -16,19 +16,21 @@ export default function Dashboard() {
   const isSchool = type === "SCHOOL" || type === "UNIVERSITY"
   const isGym = type === "GYM"
   const isHotel = type === "HOTEL"
-  const isRestaurant = !isSchool && !isGym && !isHotel
+  const isBakery = type === "BAKERY"
+  const isRestaurant = !isSchool && !isGym && !isHotel && !isBakery
   const [stats, setStats] = useState<any>(null)
 
   useEffect(() => {
     const load = () => {
       if (isGym) gymApi.stats().then(setStats).catch(() => {})
       else if (isHotel) hotelApi.stats().then(setStats).catch(() => {})
+      else if (isBakery) bakeryApi.dashboard().then(setStats).catch(() => {})
       else dashboardApi.stats().then(setStats).catch(() => {})
     }
     load()
     const interval = setInterval(load, 15000)
     return () => clearInterval(interval)
-  }, [isGym, isHotel])
+  }, [isGym, isHotel, isBakery])
 
   return (
     <div className="min-h-svh bg-semay-50 flex">
@@ -49,6 +51,14 @@ export default function Dashboard() {
               <NavLink to="/pos" icon={<UtensilsCrossed className="w-4 h-4" />} label={t("pos")} />
               <NavLink to="/kds" icon={<Monitor className="w-4 h-4" />} label={t("kitchen")} />
               <NavLink to="/menu" icon={<BookOpen className="w-4 h-4" />} label={t("menu")} />
+            </>
+          )}
+          {isBakery && (
+            <>
+              <NavLink to="/bakery/sell" icon={<Croissant className="w-4 h-4" />} label={isAm ? "ሽያጭ" : "Sell"} />
+              <NavLink to="/bakery/produce" icon={<Factory className="w-4 h-4" />} label={isAm ? "ማምረት" : "Produce"} />
+              <NavLink to="/bakery/products" icon={<BookOpen className="w-4 h-4" />} label={isAm ? "ምርቶች" : "Products"} />
+              <NavLink to="/bakery/waste" icon={<Trash2 className="w-4 h-4" />} label={isAm ? "ብክነት" : "Waste"} />
             </>
           )}
           {isSchool && (
@@ -97,6 +107,7 @@ export default function Dashboard() {
           </div>
           <div className="flex gap-2">
             {isRestaurant && <Link to="/pos" className="text-sm font-medium bg-semay-900 text-white px-4 py-2 rounded-full hover:bg-semay-800">{isAm ? "POS" : "Open POS"}</Link>}
+            {isBakery && <Link to="/bakery/sell" className="text-sm font-medium bg-semay-900 text-white px-4 py-2 rounded-full hover:bg-semay-800">{isAm ? "ሽያጭ" : "Sell"}</Link>}
             {isGym && <Link to="/gym/check-in" className="text-sm font-medium bg-semay-900 text-white px-4 py-2 rounded-full hover:bg-semay-800">Check-In</Link>}
             {isHotel && <Link to="/hotel/rooms" className="text-sm font-medium bg-semay-900 text-white px-4 py-2 rounded-full hover:bg-semay-800">{isAm ? "ክፍሎች" : "Rooms"}</Link>}
             <Link to="/ai" className="text-sm font-medium border border-semay-200 text-semay-700 px-4 py-2 rounded-full hover:bg-semay-50 flex items-center gap-1.5">
@@ -112,6 +123,14 @@ export default function Dashboard() {
                 <StatCard label={isAm ? "ትዕዛዞች" : "Orders"} value={String(stats?.todayOrders ?? 0)} />
                 <StatCard label={isAm ? "ንቁ" : "Active"} value={String(stats?.activeOrders ?? 0)} />
                 <StatCard label={isAm ? "ጠረጴዛዎች" : "Open Tables"} value={String(stats?.openTables ?? 0)} />
+              </>
+            )}
+            {isBakery && (
+              <>
+                <StatCard label={isAm ? "የዛሬ ሽያጭ" : "Today Sales"} value={`Br ${Number(stats?.todaySales ?? 0).toFixed(2)}`} />
+                <StatCard label={isAm ? "የዛሬ ትዕዛዞች" : "Today Orders"} value={String(stats?.todayOrders ?? 0)} />
+                <StatCard label={isAm ? "የተመረተ" : "Produced"} value={String(stats?.produced ?? 0)} />
+                <StatCard label={isAm ? "የተባከነ" : "Wasted"} value={String(stats?.wasted ?? 0)} />
               </>
             )}
             {isSchool && (
@@ -141,8 +160,8 @@ export default function Dashboard() {
             <h2 className="text-xl font-semibold text-semay-900 mb-2">{isAm ? "እንኳን ወደ ሰማይ በደህና መጡ" : "Welcome to Semay"}</h2>
             <p className="text-semay-500 max-w-md mx-auto">
               {isAm
-                ? "Phase 3 ቀጥሏል። ሆቴል እና Semay AI ተጨምረዋል።"
-                : "Phase 3 continues. Hotel rooms and Semay AI assistant are now available."}
+                ?  "ቀጥሏል። ሆቴል እና Semay AI ተጨምረዋል።"
+                :  "continues. Hotel rooms and Semay AI assistant are now available."}
             </p>
           </div>
         </div>

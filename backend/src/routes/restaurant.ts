@@ -55,55 +55,66 @@ router.get("/reservations", async (req, res) => {
   res.json(list)
 })
 
-router.post("/reservations", requireRole(Role.OWNER, Role.MANAGER, Role.WAITER, Role.STAFF), async (req, res) => {
-  try {
-    const data = z
-      .object({
-        guestName: z.string().min(1),
-        phone: z.string().optional(),
-        partySize: z.number().int().positive().default(2),
-        tableNumber: z.string().optional(),
-        dateTime: z.string(),
-        notes: z.string().optional(),
-      })
-      .parse(req.body)
+router.post(
+  "/reservations",
+  requireRole(Role.OWNER, Role.MANAGER, Role.WAITER, Role.STAFF),
+  async (req, res) => {
+    try {
+      const data = z
+        .object({
+          guestName: z.string().min(1),
+          phone: z.string().optional(),
+          partySize: z.number().int().positive().default(2),
+          tableNumber: z.string().optional(),
+          dateTime: z.string(),
+          notes: z.string().optional(),
+        })
+        .parse(req.body)
 
-    const reservation = await prisma.reservation.create({
-      data: {
-        guestName: data.guestName,
-        phone: data.phone,
-        partySize: data.partySize,
-        tableNumber: data.tableNumber,
-        reservedAt: new Date(data.dateTime),
-        notes: data.notes,
-        status: "confirmed",
-        organizationId: req.user!.organizationId!,
-      },
-    })
-    res.status(201).json(reservation)
-  } catch (err: any) {
-    if (err.name === "ZodError") return res.status(400).json({ error: err.errors })
-    res.status(500).json({ error: "Failed to create reservation" })
-  }
-})
-
-router.patch("/reservations/:id/status", requireRole(Role.OWNER, Role.MANAGER, Role.WAITER, Role.STAFF), async (req, res) => {
-  try {
-    const { status } = z
-      .object({
-        status: z.enum(["pending", "confirmed", "seated", "cancelled", "completed"]),
+      const reservation = await prisma.reservation.create({
+        data: {
+          guestName: data.guestName,
+          phone: data.phone,
+          partySize: data.partySize,
+          tableNumber: data.tableNumber,
+          reservedAt: new Date(data.dateTime),
+          notes: data.notes,
+          status: "confirmed",
+          organizationId: req.user!.organizationId!,
+        },
       })
-      .parse(req.body)
-    const organizationId = req.user!.organizationId!
-    const id = String(req.params.id)
-    const r = await prisma.reservation.findFirst({ where: { id, organizationId } })
-    if (!r) return res.status(404).json({ error: "Not found" })
-    const updated = await prisma.reservation.update({ where: { id: r.id }, data: { status } })
-    res.json(updated)
-  } catch {
-    res.status(500).json({ error: "Failed" })
+      res.status(201).json(reservation)
+    } catch (err: any) {
+      if (err.name === "ZodError") return res.status(400).json({ error: err.errors })
+      res.status(500).json({ error: "Failed to create reservation" })
+    }
   }
-})
+)
+
+router.patch(
+  "/reservations/:id/status",
+  requireRole(Role.OWNER, Role.MANAGER, Role.WAITER, Role.STAFF),
+  async (req, res) => {
+    try {
+      const { status } = z
+        .object({
+          status: z.enum(["pending", "confirmed", "seated", "cancelled", "completed"]),
+        })
+        .parse(req.body)
+      const organizationId = req.user!.organizationId!
+      const id = String(req.params.id)
+      const r = await prisma.reservation.findFirst({ where: { id, organizationId } })
+      if (!r) return res.status(404).json({ error: "Not found" })
+      const updated = await prisma.reservation.update({
+        where: { id: r.id },
+        data: { status },
+      })
+      res.json(updated)
+    } catch {
+      res.status(500).json({ error: "Failed" })
+    }
+  }
+)
 
 router.get("/staff", async (req, res) => {
   const organizationId = req.user!.organizationId!
@@ -167,7 +178,6 @@ router.get("/analytics", async (req, res) => {
 
   const todayKey = localDayKey(todayStart)
 
-  // Daily chart: today by hour
   const hourlyToday: { hour: number; label: string; sales: number; orders: number }[] = []
   for (let h = 0; h < 24; h++) {
     hourlyToday.push({
@@ -323,21 +333,26 @@ router.get("/payment-report", async (req, res) => {
   res.json({ orders, byMethod })
 })
 
-router.post("/cleanup-receipts", requireRole(Role.OWNER, Role.MANAGER), async (req, res) => {
-  const organizationId = req.user!.organizationId!
-  const cutoff = new Date()
-  cutoff.setDate(cutoff.getDate() - 7)
+/** Photos cleared after 7 days (keep as requested) */
+router.post(
+  "/cleanup-receipts",
+  requireRole(Role.OWNER, Role.MANAGER, Role.WAITER, Role.STAFF),
+  async (req, res) => {
+    const organizationId = req.user!.organizationId!
+    const cutoff = new Date()
+    cutoff.setDate(cutoff.getDate() - 7)
 
-  const result = await prisma.order.updateMany({
-    where: {
-      organizationId,
-      paidAt: { lt: cutoff },
-      paymentReceipt: { not: null },
-    },
-    data: { paymentReceipt: null },
-  })
-  res.json({ ok: true, cleared: result.count })
-})
+    const result = await prisma.order.updateMany({
+      where: {
+        organizationId,
+        paidAt: { lt: cutoff },
+        paymentReceipt: { not: null },
+      },
+      data: { paymentReceipt: null },
+    })
+    res.json({ ok: true, cleared: result.count })
+  }
+)
 
 router.get("/tables", async (req, res) => {
   const organizationId = req.user!.organizationId!
@@ -354,7 +369,9 @@ router.get("/tables", async (req, res) => {
 
 router.post("/tables", requireRole(Role.OWNER, Role.MANAGER), async (req, res) => {
   try {
-    const data = z.object({ name: z.string().min(1), seats: z.number().int().optional() }).parse(req.body)
+    const data = z
+      .object({ name: z.string().min(1), seats: z.number().int().optional() })
+      .parse(req.body)
     const table = await (prisma as any).diningTable.create({
       data: {
         name: data.name,
@@ -369,19 +386,23 @@ router.post("/tables", requireRole(Role.OWNER, Role.MANAGER), async (req, res) =
   }
 })
 
-router.patch("/tables/:id", requireRole(Role.OWNER, Role.MANAGER, Role.WAITER, Role.STAFF), async (req, res) => {
-  try {
-    const id = String(req.params.id)
-    const { status } = z.object({ status: z.enum(["free", "busy", "reserved"]) }).parse(req.body)
-    const updated = await (prisma as any).diningTable.update({
-      where: { id },
-      data: { status },
-    })
-    res.json(updated)
-  } catch {
-    res.status(400).json({ error: "Failed" })
+router.patch(
+  "/tables/:id",
+  requireRole(Role.OWNER, Role.MANAGER, Role.WAITER, Role.STAFF),
+  async (req, res) => {
+    try {
+      const id = String(req.params.id)
+      const { status } = z.object({ status: z.enum(["free", "busy", "reserved"]) }).parse(req.body)
+      const updated = await (prisma as any).diningTable.update({
+        where: { id },
+        data: { status },
+      })
+      res.json(updated)
+    } catch {
+      res.status(400).json({ error: "Failed" })
+    }
   }
-})
+)
 
 router.get("/expenses", async (req, res) => {
   const list = await prisma.expense.findMany({

@@ -1,242 +1,122 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
+import { Link } from "react-router-dom"
+import { ArrowLeft, Plus, Minus, Send } from "lucide-react"
 import { bakeryApi } from "../../lib/api"
-
-interface Product {
-  id: string
-  name: string
-  nameAm?: string
-  price: number
-  stockQty: number
-  available: boolean
-  category: string
-  imageUrl?: string
-}
-
-interface CartItem {
-  productId: string
-  name: string
-  price: number
-  quantity: number
-}
+import { cn } from "../../lib/utils"
 
 export default function BakerySell() {
-  const [products, setProducts] = useState<Product[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState("")
-  const [success, setSuccess] = useState("")
-  const [saving, setSaving] = useState(false)
+  const [products, setProducts] = useState<any[]>([])
+  const [cart, setCart] = useState<{ id: string; name: string; price: number; qty: number }[]>([])
+  const [pay, setPay] = useState<"cash" | "telebirr" | "cbe" | "card">("cash")
+  const [msg, setMsg] = useState("")
+  const [busy, setBusy] = useState(false)
 
-  const [cart, setCart] = useState<CartItem[]>([])
-  const [paymentMethod, setPaymentMethod] = useState("cash")
-  const [search, setSearch] = useState("")
-
+  const load = () => bakeryApi.products().then((p) => setProducts((p || []).filter((x: any) => x.available !== false)))
   useEffect(() => {
-    bakeryApi
-      .products()
-      .then((res: any) => {
-        setProducts(res)
-        setLoading(false)
-      })
-      .catch((err: any) => {
-        setError(err?.message || "Failed to load products")
-        setLoading(false)
-      })
+    load()
   }, [])
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    return products.filter(
-      (p) =>
-        p.available &&
-        p.stockQty > 0 &&
-        (q === "" ||
-          p.name.toLowerCase().includes(q) ||
-          p.nameAm?.toLowerCase().includes(q) ||
-          p.category.toLowerCase().includes(q))
-    )
-  }, [products, search])
-
-  const addToCart = (p: Product) => {
-    setCart((prev) => {
-      const existing = prev.find((x) => x.productId === p.id)
-      if (existing) {
-        if (existing.quantity >= p.stockQty) return prev
-        return prev.map((x) =>
-          x.productId === p.id ? { ...x, quantity: x.quantity + 1 } : x
-        )
-      }
-      return [...prev, { productId: p.id, name: p.name, price: Number(p.price), quantity: 1 }]
+  const add = (p: any) => {
+    setCart((c) => {
+      const i = c.find((x) => x.id === p.id)
+      if (i) return c.map((x) => (x.id === p.id ? { ...x, qty: x.qty + 1 } : x))
+      return [...c, { id: p.id, name: p.name, price: Number(p.price), qty: 1 }]
     })
   }
 
-  const updateQty = (productId: string, delta: number) => {
-    setCart((prev) =>
-      prev
-        .map((x) => {
-          if (x.productId !== productId) return x
-          const next = Math.max(0, x.quantity + delta)
-          return { ...x, quantity: next }
-        })
-        .filter((x) => x.quantity > 0)
-    )
-  }
+  const total = cart.reduce((s, x) => s + x.price * x.qty, 0)
 
-  const removeItem = (productId: string) => {
-    setCart((prev) => prev.filter((x) => x.productId !== productId))
-  }
-
-  const total = cart.reduce((sum, i) => sum + i.price * i.quantity, 0)
-
-  const handleCheckout = async () => {
-    if (cart.length === 0) return
-    setError("")
-    setSuccess("")
-    setSaving(true)
+  const send = async () => {
+    if (!cart.length) return
+    setBusy(true)
+    setMsg("")
     try {
       await bakeryApi.sell({
-        paymentMethod,
-        items: cart.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+        paymentMethod: pay,
+        items: cart.map((x) => ({ productId: x.id, quantity: x.qty })),
       })
-      setSuccess("Sale recorded successfully.")
       setCart([])
-      const updated: any = await bakeryApi.products()
-      setProducts(updated)
-    } catch (err: any) {
-      setError(err?.message || "Failed to complete sale")
+      setMsg("Sold · stock updated")
+      load()
+    } catch (e: any) {
+      setMsg(e.message || "Failed")
     } finally {
-      setSaving(false)
+      setBusy(false)
     }
   }
 
   return (
-    <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-      {/* Product grid */}
-      <div className="lg:col-span-2 space-y-4">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold text-gray-800">Counter Sale</h1>
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search products…"
-            className="w-full max-w-xs rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-          />
+    <div className="min-h-svh bg-semay-50 flex flex-col">
+      <header className="bg-white border-b h-14 px-4 flex items-center gap-3 sticky top-0">
+        <Link to="/bakery" className="p-2 -ml-2">
+          <ArrowLeft className="w-5 h-5" />
+        </Link>
+        <h1 className="font-semibold text-sm">POS / Sell</h1>
+      </header>
+      <div className="flex-1 grid md:grid-cols-2 gap-0">
+        <div className="p-3 grid grid-cols-2 gap-2 content-start">
+          {products.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => add(p)}
+              disabled={p.stockQty < 1}
+              className="text-left bg-white border rounded-xl p-3 disabled:opacity-40"
+            >
+              <div className="text-sm font-medium">{p.name}</div>
+              <div className="text-xs text-semay-500">
+                {Number(p.price)} ETB · {p.stockQty} left
+              </div>
+            </button>
+          ))}
         </div>
-
-        {error && (
-          <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg border border-red-100">
-            {error}
+        <div className="bg-white border-t md:border-t-0 md:border-l p-4 flex flex-col sticky bottom-0">
+          <div className="flex-1 space-y-2">
+            {cart.map((x) => (
+              <div key={x.id} className="flex items-center justify-between text-sm">
+                <span>
+                  {x.name} × {x.qty}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => setCart((c) => c.map((i) => (i.id === x.id ? { ...i, qty: Math.max(1, i.qty - 1) } : i)))}>
+                    <Minus className="w-4 h-4" />
+                  </button>
+                  <button type="button" onClick={() => setCart((c) => c.map((i) => (i.id === x.id ? { ...i, qty: i.qty + 1 } : i)))}>
+                    <Plus className="w-4 h-4" />
+                  </button>
+                  <span className="w-16 text-right">{x.price * x.qty}</span>
+                </div>
+              </div>
+            ))}
           </div>
-        )}
-        {success && (
-          <div className="bg-emerald-50 text-emerald-700 px-4 py-3 rounded-lg border border-emerald-100">
-            {success}
-          </div>
-        )}
-
-        {loading ? (
-          <div className="text-gray-500">Loading products…</div>
-        ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            {filtered.map((p) => (
+          <div className="flex gap-1 my-2">
+            {(["cash", "telebirr", "cbe", "card"] as const).map((m) => (
               <button
-                key={p.id}
-                onClick={() => addToCart(p)}
-                disabled={p.stockQty <= 0}
-                className="text-left bg-white p-4 rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition disabled:opacity-50"
+                key={m}
+                type="button"
+                onClick={() => setPay(m)}
+                className={cn(
+                  "flex-1 text-xs py-1.5 rounded-lg border capitalize",
+                  pay === m ? "bg-semay-900 text-white border-semay-900" : "border-semay-200"
+                )}
               >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded">
-                    {p.category}
-                  </span>
-                  <span className="text-xs text-gray-500">Stock: {p.stockQty}</span>
-                </div>
-                <div className="font-medium text-gray-900">{p.name}</div>
-                {p.nameAm && <div className="text-xs text-gray-500">{p.nameAm}</div>}
-                <div className="mt-2 text-sm font-semibold text-gray-800">
-                  Br {Number(p.price).toFixed(2)}
-                </div>
+                {m}
               </button>
             ))}
-            {filtered.length === 0 && (
-              <div className="col-span-full text-center text-gray-400 py-12">
-                No available products.
-              </div>
-            )}
           </div>
-        )}
-      </div>
-
-      {/* Cart */}
-      <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm h-fit">
-        <h2 className="text-lg font-medium text-gray-800 mb-4">Cart</h2>
-
-        {cart.length === 0 ? (
-          <div className="text-sm text-gray-400 mb-4">Tap products to add them here.</div>
-        ) : (
-          <div className="space-y-3 mb-4">
-            {cart.map((item) => (
-              <div
-                key={item.productId}
-                className="flex items-center justify-between bg-gray-50 px-3 py-2 rounded-lg"
-              >
-                <div>
-                  <div className="text-sm font-medium text-gray-900">{item.name}</div>
-                  <div className="text-xs text-gray-500">
-                    Br {item.price.toFixed(2)} × {item.quantity}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => updateQty(item.productId, -1)}
-                    className="w-7 h-7 rounded bg-white border border-gray-200 text-gray-700 hover:bg-gray-100 flex items-center justify-center text-sm"
-                  >
-                    −
-                  </button>
-                  <span className="text-sm w-6 text-center">{item.quantity}</span>
-                  <button
-                    onClick={() => updateQty(item.productId, 1)}
-                    className="w-7 h-7 rounded bg-white border border-gray-200 text-gray-700 hover:bg-gray-100 flex items-center justify-center text-sm"
-                  >
-                    +
-                  </button>
-                  <button
-                    onClick={() => removeItem(item.productId)}
-                    className="ml-1 text-rose-600 hover:text-rose-700 text-xs"
-                  >
-                    Remove
-                  </button>
-                </div>
-              </div>
-            ))}
+          <div className="flex justify-between font-semibold text-sm mb-2">
+            <span>Total</span>
+            <span>{total} ETB</span>
           </div>
-        )}
-
-        <div className="border-t border-gray-100 pt-4 space-y-3">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-600">Total</span>
-            <span className="text-xl font-bold text-gray-900">Br {total.toFixed(2)}</span>
-          </div>
-
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">Payment</label>
-            <select
-              value={paymentMethod}
-              onChange={(e) => setPaymentMethod(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-            >
-              <option value="cash">Cash</option>
-              <option value="telebirr">Telebirr</option>
-              <option value="cbe">CBE</option>
-              <option value="card">Card</option>
-            </select>
-          </div>
-
+          {msg && <p className="text-xs text-semay-600 mb-2">{msg}</p>}
           <button
-            onClick={handleCheckout}
-            disabled={cart.length === 0 || saving}
-            className="w-full px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 text-sm font-medium"
+            type="button"
+            disabled={!cart.length || busy}
+            onClick={send}
+            className="w-full flex items-center justify-center gap-2 bg-semay-900 text-white py-3 rounded-xl text-sm font-medium disabled:opacity-40"
           >
-            {saving ? "Processing…" : "Complete Sale"}
+            <Send className="w-4 h-4" />
+            {busy ? "..." : "Complete sale"}
           </button>
         </div>
       </div>

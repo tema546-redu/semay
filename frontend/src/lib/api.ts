@@ -193,6 +193,18 @@ export const staffApi = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+    attendance: (year: number, month: number) =>
+    request<any>(`/api/staff/attendance?year=${year}&month=${month}`),
+  markAttendance: (data: {
+    userId: string
+    date: string
+    status: string
+    note?: string
+  }) =>
+    request<any>("/api/staff/attendance", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
 }
 
 export const reservationsApi = {
@@ -216,8 +228,6 @@ export const bakeryApi = {
   products: () => request<any[]>("/api/bakery/products"),
   createProduct: (data: any) =>
     request("/api/bakery/products", { method: "POST", body: JSON.stringify(data) }),
-  updateProduct: (id: string, data: any) =>
-    request(`/api/bakery/products/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   produce: (data: { productId: string; quantity: number; note?: string }) =>
     request("/api/bakery/produce", { method: "POST", body: JSON.stringify(data) }),
   waste: (data: { productId: string; quantity: number; reason?: string }) =>
@@ -225,4 +235,13 @@ export const bakeryApi = {
   sell: (data: any) =>
     request("/api/bakery/sell", { method: "POST", body: JSON.stringify(data) }),
   dashboard: () => request<any>("/api/bakery/dashboard"),
+}
+
+export const feedbackApi = {
+  send: (message: string, email?: string) =>
+    request<any>("/api/feedback", {
+      method: "POST",
+      body: JSON.stringify({ message, ...(email ? { email } : {}) }),
+    }),
+  mine: () => request<any[]>("/api/feedback/mine"),
 }

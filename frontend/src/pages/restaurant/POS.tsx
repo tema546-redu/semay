@@ -247,7 +247,7 @@ export default function POS() {
               <div className="col-span-full flex flex-col items-center justify-center py-16 px-6 text-center">
                 <p className="text-semay-600 text-sm mb-3">
                   {isAm
-                    ? "ምናሌ ባዶ ነው። መጀመሪያ እቃዎችን ይጨምሩ።"
+                    ? "ሜኑ ባዶ ነው። መጀመሪያ እቃዎችን ይጨምሩ።"
                     : "Menu is empty. Add items first."}
                 </p>
 
@@ -255,7 +255,7 @@ export default function POS() {
                   to="/menu"
                   className="text-sm font-medium bg-semay-900 text-white px-4 py-2 rounded-full"
                 >
-                  {isAm ? "ወደ ምናሌ" : "Go to Menu"}
+                  {isAm ? "ወደ ሜኑ" : "Go to Menu"}
                 </Link>
               </div>
             ) : (

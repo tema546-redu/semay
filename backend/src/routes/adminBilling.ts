@@ -2,6 +2,7 @@ import { Router } from "express"
 import { z } from "zod"
 import { prisma } from "../lib/prisma.js"
 import { planDurationDays, PlanKey } from "../lib/pricing.js"
+import { authenticate } from "../middleware/auth.js"
 
 const router = Router()
 const ADMIN_KEY = process.env.SEMAY_ADMIN_KEY || "semay-approve-2026"
@@ -68,7 +69,7 @@ router.get("/pending", async (req, res) => {
   )
 })
 
-/** All orgs overview (time left, status) */
+/** All orgs overview */
 router.get("/orgs", async (req, res) => {
   if (!check(req, res)) return
 
@@ -161,6 +162,49 @@ router.post("/reject", async (req, res) => {
     res.json({ message: "Rejected" })
   } catch (e: any) {
     res.status(400).json({ error: e.message || "Failed" })
+  }
+})
+
+/** Admin: list feedback (x-admin-key) */
+router.get("/feedback", async (req, res) => {
+  if (!check(req, res)) return
+  try {
+    const list = await prisma.feedback.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    })
+    res.json(list)
+  } catch (e: any) {
+    res.status(500).json({ error: e.message || "Feedback table missing?" })
+  }
+})
+
+/**
+ * Optional: allow POST feedback on this router too.
+ * Prefer mounting POST /api/feedback separately; this works if index mounts admin routes only under /api/admin/billing.
+ * Settings should call POST /api/feedback — see note below.
+ */
+router.post("/feedback", authenticate, async (req, res) => {
+  try {
+    const data = z
+      .object({
+        message: z.string().min(3).max(2000),
+        email: z.string().email().optional(),
+      })
+      .parse(req.body)
+
+    const row = await prisma.feedback.create({
+      data: {
+        message: data.message,
+        email: data.email,
+        organizationId: req.user!.organizationId || null,
+        userId: req.user!.userId,
+      },
+    })
+    res.status(201).json(row)
+  } catch (e: any) {
+    if (e.name === "ZodError") return res.status(400).json({ error: e.errors })
+    res.status(500).json({ error: e.message || "Failed" })
   }
 })
 

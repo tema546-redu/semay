@@ -25,7 +25,7 @@ export default function Landing() {
       titleEn: "Café",
       titleAm: "ካፌ",
       descEn: "Menu, POS, kitchen display, staff invites, daily sales.",
-      descAm: "ምናሌ፣ POS፣ ኩሽና፣ ሰራተኛ ግብዣ፣ የዕለት ሽያጭ።",
+      descAm: "ሜኑ፣ POS፣ ኩሽና፣ ሰራተኛ ግብዣ፣ የዕለት ሽያጭ።",
     },
     {
       icon: UtensilsCrossed,
@@ -192,7 +192,7 @@ export default function Landing() {
               </h3>
               <ul className="text-sm text-slate-600 space-y-1.5 leading-relaxed">
                 <li>· {isAm ? "POS እና ኩሽና (KDS)" : "POS & kitchen display (KDS)"}</li>
-                <li>· {isAm ? "ምናሌ እና ሰራተኛ ግብዣ" : "Menu & staff invite links"}</li>
+                <li>· {isAm ? "ሜኑ እና ሰራተኛ ግብዣ" : "Menu & staff invite links"}</li>
                 <li>· {isAm ? "ሪዘርቬሽን እና የመዝጊያ ሪፖርት" : "Reservations & closing report"}</li>
                 <li>· {isAm ? "ክፍያ በ Telebirr / CBE (በፈቃድ)" : "Billing via Telebirr / CBE (manual approval)"}</li>
               </ul>
