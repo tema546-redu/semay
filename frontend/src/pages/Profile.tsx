@@ -10,6 +10,7 @@ export default function Profile() {
   const [avatarUrl, setAvatarUrl] = useState("")
   const [msg, setMsg] = useState("")
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     authApi
@@ -62,6 +63,27 @@ export default function Profile() {
       setMsg("Photo removed")
     } catch (err: any) {
       setMsg(err.message || "Failed to remove photo")
+    }
+  }
+
+  const deleteAccount = async () => {
+    const ok = confirm(
+      "Delete your account permanently?\n\nYou will be logged out. This cannot be undone."
+    )
+    if (!ok) return
+    const ok2 = confirm("Are you sure? Type OK in the next step mentally — last chance.")
+    if (!ok2) return
+
+    setDeleting(true)
+    setMsg("")
+    try {
+      await authApi.deleteAccount()
+      localStorage.removeItem("semay_token")
+      localStorage.removeItem("token")
+      window.location.href = "/"
+    } catch (err: any) {
+      setMsg(err.message || "Failed to delete account")
+      setDeleting(false)
     }
   }
 
@@ -136,6 +158,21 @@ export default function Profile() {
         >
           {saving ? "..." : "Save profile"}
         </button>
+
+        <div className="pt-8 border-t border-slate-200 mt-6">
+          <p className="text-xs text-slate-500 mb-3">
+            Delete permanently removes your login. Contact support if you need business data
+            recovered.
+          </p>
+          <button
+            type="button"
+            disabled={deleting}
+            onClick={deleteAccount}
+            className="w-full border border-rose-200 text-rose-700 py-3 rounded-xl text-sm font-medium disabled:opacity-50"
+          >
+            {deleting ? "Deleting..." : "Delete my account"}
+          </button>
+        </div>
       </form>
     </div>
   )

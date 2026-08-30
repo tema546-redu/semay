@@ -211,4 +211,18 @@ router.patch("/me", authenticate, async (req, res) => {
   }
 })
 
+router.delete("/me", authenticate, async (req, res) => {
+  try {
+    const userId = req.user!.userId
+    const user = await prisma.user.findUnique({ where: { id: userId } })
+    if (!user) return res.status(404).json({ error: "User not found" })
+
+    await prisma.user.delete({ where: { id: userId } })
+    res.json({ ok: true, message: "Account deleted" })
+  } catch (e: any) {
+    console.error(e)
+    res.status(500).json({ error: e.message || "Failed to delete account" })
+  }
+})
+
 export default router

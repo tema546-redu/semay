@@ -208,4 +208,41 @@ router.post("/feedback", authenticate, async (req, res) => {
   }
 })
 
+/** Platform activity — orders by hour (last 7 days) */
+router.get("/usage", async (req, res) => {
+  if (!check(req, res)) return
+  try {
+    const since = new Date()
+    since.setDate(since.getDate() - 7)
+
+    const orders = await prisma.order.findMany({
+      where: { createdAt: { gte: since } },
+      select: { createdAt: true, organizationId: true },
+    })
+
+    const byHour = Array.from({ length: 24 }, (_, h) => ({ hour: h, count: 0 }))
+    const byDay: Record<string, number> = {}
+    for (const o of orders) {
+      byHour[new Date(o.createdAt).getHours()].count++
+      const k = o.createdAt.toISOString().slice(0, 10)
+      byDay[k] = (byDay[k] || 0) + 1
+    }
+
+    const userCount = await prisma.user.count()
+    const orgCount = await prisma.organization.count()
+
+    res.json({
+      orderCount7d: orders.length,
+      userCount,
+      orgCount,
+      byHour,
+      byDay: Object.entries(byDay)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([date, count]) => ({ date, count })),
+    })
+  } catch (e: any) {
+    res.status(500).json({ error: e.message || "Failed" })
+  }
+})
+
 export default router

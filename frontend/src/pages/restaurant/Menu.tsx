@@ -1,9 +1,17 @@
 import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import { ArrowLeft, ToggleLeft, ToggleRight, Plus, X } from "lucide-react"
+import { ArrowLeft, ToggleLeft, ToggleRight, Plus, X, Pencil, Trash2 } from "lucide-react"
 import { menuApi } from "../../lib/api"
 import { cn } from "../../lib/utils"
+
+const emptyForm = {
+  name: "",
+  nameAm: "",
+  category: "Food",
+  price: "",
+  imageUrl: "",
+}
 
 export default function MenuPage() {
   const { i18n } = useTranslation()
@@ -11,14 +19,9 @@ export default function MenuPage() {
   const [items, setItems] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [show, setShow] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState({
-    name: "",
-    nameAm: "",
-    category: "Food",
-    price: "",
-    imageUrl: "",
-  })
+  const [form, setForm] = useState(emptyForm)
 
   const load = () =>
     menuApi
@@ -52,25 +55,59 @@ export default function MenuPage() {
     }
   }
 
+  const openCreate = () => {
+    setEditingId(null)
+    setForm(emptyForm)
+    setShow(true)
+  }
+
+  const openEdit = (item: any) => {
+    setEditingId(item.id)
+    setForm({
+      name: item.name || "",
+      nameAm: item.nameAm || "",
+      category: item.category || "Food",
+      price: String(item.price ?? ""),
+      imageUrl: item.imageUrl || "",
+    })
+    setShow(true)
+  }
+
+  const remove = async (id: string) => {
+    if (!confirm(isAm ? "እቃው ይሰረዝ?" : "Delete this menu item?")) return
+    try {
+      await menuApi.remove(id)
+      setItems((p) => p.filter((i) => i.id !== id))
+    } catch (e: any) {
+      alert(e.message || "Delete failed")
+    }
+  }
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.name || !form.price) return
     setSaving(true)
     try {
-      await menuApi.create({
+      const payload = {
         name: form.name,
         nameAm: form.nameAm || undefined,
         category: form.category || "Food",
         price: Number(form.price),
-        imageUrl: form.imageUrl || undefined,
-      })
+        imageUrl: form.imageUrl || null,
+      }
+      if (editingId) {
+        await menuApi.update(editingId, payload)
+      } else {
+        await menuApi.create(payload)
+      }
       setShow(false)
-      setForm({ name: "", nameAm: "", category: "Food", price: "", imageUrl: "" })
+      setEditingId(null)
+      setForm(emptyForm)
       setLoading(true)
       load()
     } catch (err) {
       console.error(err)
-      alert("Failed to add item")
+      alert(editingId ? "Failed to update" : "Failed to add item")
     } finally {
       setSaving(false)
     }
@@ -89,7 +126,7 @@ export default function MenuPage() {
         </div>
         <button
           type="button"
-          onClick={() => setShow(true)}
+          onClick={openCreate}
           className="flex items-center gap-2 text-sm font-medium bg-semay-900 text-white px-4 py-2 rounded-full"
         >
           <Plus className="w-4 h-4" />
@@ -103,7 +140,9 @@ export default function MenuPage() {
             {isAm ? "ሜኑ እና ተገኝነት" : "Menu & Availability"}
           </h2>
           <p className="text-sm text-semay-500">
-            {isAm ? "እቃ ጨምሩ ወይም 86 ያድርጉ" : "Add items or mark 86'd when out of stock"}
+            {isAm
+              ? "እቃ ጨምሩ፣ ያርትዑ፣ ሰርዙ ወይም 86 ያድርጉ"
+              : "Add, edit, delete, change photo, or mark 86'd"}
           </p>
         </div>
 
@@ -116,7 +155,7 @@ export default function MenuPage() {
             </p>
             <button
               type="button"
-              onClick={() => setShow(true)}
+              onClick={openCreate}
               className="bg-semay-900 text-white text-sm font-medium px-5 py-2.5 rounded-full"
             >
               {isAm ? "እቃ ጨምር" : "Add menu item"}
@@ -137,12 +176,14 @@ export default function MenuPage() {
                       className="px-5 py-4 flex items-center justify-between gap-3 hover:bg-semay-50/50"
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        {item.imageUrl && (
+                        {item.imageUrl ? (
                           <img
                             src={item.imageUrl}
                             alt=""
                             className="w-12 h-12 rounded-lg object-cover border shrink-0"
                           />
+                        ) : (
+                          <div className="w-12 h-12 rounded-lg bg-semay-100 shrink-0" />
                         )}
                         <div className="min-w-0">
                           <div
@@ -158,23 +199,43 @@ export default function MenuPage() {
                           </div>
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => toggle(item.id, item.available)}
-                        className="flex items-center gap-2 text-sm font-medium shrink-0"
-                      >
-                        {item.available ? (
-                          <>
-                            <span className="text-green-600">{isAm ? "ይገኛል" : "Available"}</span>
-                            <ToggleRight className="w-8 h-8 text-green-600" />
-                          </>
-                        ) : (
-                          <>
-                            <span className="text-semay-400">86'd</span>
-                            <ToggleLeft className="w-8 h-8 text-semay-300" />
-                          </>
-                        )}
-                      </button>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => openEdit(item)}
+                          className="p-2 rounded-lg hover:bg-semay-100"
+                          title="Edit"
+                        >
+                          <Pencil className="w-4 h-4 text-semay-600" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => remove(item.id)}
+                          className="p-2 rounded-lg hover:bg-rose-50"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-4 h-4 text-rose-500" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => toggle(item.id, item.available)}
+                          className="flex items-center gap-1 text-sm font-medium"
+                        >
+                          {item.available ? (
+                            <>
+                              <span className="text-green-600 hidden sm:inline">
+                                {isAm ? "ይገኛል" : "On"}
+                              </span>
+                              <ToggleRight className="w-8 h-8 text-green-600" />
+                            </>
+                          ) : (
+                            <>
+                              <span className="text-semay-400 hidden sm:inline">86</span>
+                              <ToggleLeft className="w-8 h-8 text-semay-300" />
+                            </>
+                          )}
+                        </button>
+                      </div>
                     </div>
                   ))}
               </div>
@@ -188,7 +249,13 @@ export default function MenuPage() {
           <div className="bg-white rounded-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between mb-4">
               <h2 className="font-semibold text-semay-900">
-                {isAm ? "አዲስ ሜኑ እቃ" : "New menu item"}
+                {editingId
+                  ? isAm
+                    ? "እቃ አርትዕ"
+                    : "Edit menu item"
+                  : isAm
+                    ? "አዲስ ሜኑ እቃ"
+                    : "New menu item"}
               </h2>
               <button type="button" onClick={() => setShow(false)}>
                 <X className="w-5 h-5 text-semay-400" />
@@ -225,15 +292,24 @@ export default function MenuPage() {
               />
               <div>
                 <label className="text-sm text-semay-600 block mb-1">
-                  {isAm ? "ፎቶ (አማራጭ)" : "Photo (optional)"}
+                  {isAm ? "ፎቶ (ቀይር ወይም ጨምር)" : "Photo (add or replace)"}
                 </label>
                 <input type="file" accept="image/*" onChange={onImage} className="text-sm w-full" />
                 {form.imageUrl && (
-                  <img
-                    src={form.imageUrl}
-                    alt=""
-                    className="mt-2 h-20 w-20 object-cover rounded-xl border"
-                  />
+                  <div className="mt-2 flex items-center gap-3">
+                    <img
+                      src={form.imageUrl}
+                      alt=""
+                      className="h-20 w-20 object-cover rounded-xl border"
+                    />
+                    <button
+                      type="button"
+                      className="text-xs text-rose-600"
+                      onClick={() => setForm((f) => ({ ...f, imageUrl: "" }))}
+                    >
+                      {isAm ? "ፎቶ አስወግድ" : "Remove photo"}
+                    </button>
+                  </div>
                 )}
               </div>
               <button

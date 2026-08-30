@@ -46,6 +46,8 @@ export const authApi = {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
+    deleteAccount: () =>
+    request<any>("/api/auth/me", { method: "DELETE" }),
 }
 
 export const ordersApi = {
@@ -57,14 +59,27 @@ export const ordersApi = {
 }
 
 export const menuApi = {
-  list: (availableOnly = false) =>
-    request<any[]>(`/api/menu${availableOnly ? "?available=true" : ""}`),
+  list: (availableOnly?: boolean) =>
+    request<any[]>(
+      `/api/menu${availableOnly ? "?available=true" : ""}`
+    ),
+  create: (data: any) =>
+    request<any>("/api/menu", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  update: (id: string, data: any) =>
+    request<any>(`/api/menu/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  remove: (id: string) =>
+    request<any>(`/api/menu/${id}`, { method: "DELETE" }),
   toggleAvailability: (id: string, available: boolean) =>
     request<any>(`/api/menu/${id}/availability`, {
-      method: "PATCH", body: JSON.stringify({ available }),
+      method: "PATCH",
+      body: JSON.stringify({ available }),
     }),
-  create: (data: any) =>
-    request<any>("/api/menu", { method: "POST", body: JSON.stringify(data) }),
 }
 
 export const schoolApi = {
