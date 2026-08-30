@@ -120,6 +120,8 @@ model Organization {
   bakeryProductions BakeryProduction[]
   bakeryWastes      BakeryWaste[]
   bakerySales       BakerySale[]
+  pharmacyProducts PharmacyProduct[]
+  pharmacySales    PharmacySale[]
 }
 
 model Subscription {
@@ -491,4 +493,49 @@ model Feedback {
   reply          String?
   repliedAt      DateTime?
   createdAt      DateTime  @default(now())
+}
+
+model PharmacyProduct {
+  id             String    @id @default(cuid())
+  name           String
+  nameAm         String?
+  sku            String?   // barcode / code
+  category       String    @default("General")
+  price          Decimal   @db.Decimal(12, 2)
+  costPrice      Decimal?  @db.Decimal(12, 2)
+  stockQty       Int       @default(0)
+  reorderLevel   Int       @default(10)
+  expiryDate     DateTime?
+  unit           String    @default("pcs") // pcs, box, bottle
+  available      Boolean   @default(true)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  saleItems      PharmacySaleItem[]
+
+  @@index([organizationId, name])
+}
+
+model PharmacySale {
+  id             String   @id @default(cuid())
+  total          Decimal  @db.Decimal(12, 2)
+  paymentMethod  String?  // cash | telebirr | cbe | card
+  note           String?  // optional Rx / patient note
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  staffId        String?
+  createdAt      DateTime @default(now())
+  items          PharmacySaleItem[]
+}
+
+model PharmacySaleItem {
+  id        String          @id @default(cuid())
+  saleId    String
+  sale      PharmacySale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  productId String?
+  product   PharmacyProduct? @relation(fields: [productId], references: [id])
+  name      String
+  quantity  Int
+  price     Decimal         @db.Decimal(12, 2)
 }

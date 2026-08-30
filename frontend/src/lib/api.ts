@@ -245,3 +245,25 @@ export const feedbackApi = {
     }),
   mine: () => request<any[]>("/api/feedback/mine"),
 }
+
+export const pharmacyApi = {
+  dashboard: () => request<any>("/api/pharmacy/dashboard"),
+  products: (q?: string) =>
+    request<any[]>(`/api/pharmacy/products${q ? `?q=${encodeURIComponent(q)}` : ""}`),
+  createProduct: (data: any) =>
+    request<any>("/api/pharmacy/products", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  updateProduct: (id: string, data: any) =>
+    request<any>(`/api/pharmacy/products/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  sell: (data: any) =>
+    request<any>("/api/pharmacy/sell", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  sales: () => request<any[]>("/api/pharmacy/sales"),
+}
