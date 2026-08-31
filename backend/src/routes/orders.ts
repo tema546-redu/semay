@@ -57,6 +57,27 @@ router.post("/", requireRole(Role.OWNER, Role.MANAGER, Role.WAITER, Role.STAFF),
       data: orderData,
       include: { items: true, staff: { select: { id: true, name: true } } },
     })
+
+    try {
+      for (const line of data.items) {
+        if (!line.menuItemId) continue
+        const recipes = await prisma.recipeLine.findMany({
+          where: { menuItemId: line.menuItemId },
+        })
+        for (const r of recipes) {
+          const use = Number(r.qtyPerSale) * line.quantity
+          await prisma.stockItem.updateMany({
+            where: { id: r.stockItemId, organizationId },
+            data: {
+              quantity: { decrement: use },
+            },
+          })
+        }
+      }
+    } catch (e) {
+      console.error("stock deduct", e)
+    }
+    
     res.status(201).json(order)
   } catch (err: any) {
     if (err.name === "ZodError") return res.status(400).json({ error: err.errors })

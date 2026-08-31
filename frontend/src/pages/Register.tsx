@@ -1,6 +1,7 @@
 import { useState } from "react"
-import { Link, useNavigate } from "react-router-dom"
+import { Link, useNavigate, useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
+import { Eye, EyeOff } from "lucide-react"
 import { useAuth } from "../lib/auth"
 
 const BUSINESS_TYPES = [
@@ -17,21 +18,29 @@ const BUSINESS_TYPES = [
   { value: "OTHER", label: "Other", labelAm: "ሌላ" },
 ]
 
+const VALID_TYPES = new Set(BUSINESS_TYPES.map((b) => b.value))
+
 export default function Register() {
   const { i18n } = useTranslation()
   const isAm = i18n.language === "am"
   const { register } = useAuth()
   const navigate = useNavigate()
+  const [params] = useSearchParams()
+
+  const typeFromUrl = params.get("type")?.toUpperCase() || ""
+  const initialType = VALID_TYPES.has(typeFromUrl) ? typeFromUrl : "CAFE"
+
   const [form, setForm] = useState({
     name: "",
     email: "",
     password: "",
     organizationName: "",
-    businessType: "CAFE",
+    businessType: initialType,
     preferredLang: isAm ? "am" : "en",
   })
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+  const [showPass, setShowPass] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -63,38 +72,107 @@ export default function Register() {
           <h1 className="text-2xl font-semibold text-semay-900">
             {isAm ? "አዲስ መለያ ፍጠር" : "Create your account"}
           </h1>
+          <p className="text-sm text-semay-500 mt-2">
+            {isAm ? "3 ቀን ነፃ ሙከራ" : "3-day free trial"}
+          </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="bg-white border border-semay-200 rounded-2xl p-8 shadow-sm space-y-4">
+        <form
+          onSubmit={handleSubmit}
+          className="bg-white border border-semay-200 rounded-2xl p-8 shadow-sm space-y-4"
+        >
           <div>
-            <label className="block text-sm font-medium text-semay-700 mb-1">{isAm ? "ሙሉ ስም" : "Your Name"}</label>
-            <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full px-3.5 py-2.5 rounded-xl border border-semay-200 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30" />
+            <label className="block text-sm font-medium text-semay-700 mb-1">
+              {isAm ? "ሙሉ ስም" : "Your Name"}
+            </label>
+            <input
+              required
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              className="w-full px-3.5 py-2.5 rounded-xl border border-semay-200 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
+            />
           </div>
+
           <div>
             <label className="block text-sm font-medium text-semay-700 mb-1">Email</label>
-            <input type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full px-3.5 py-2.5 rounded-xl border border-semay-200 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30" />
+            <input
+              type="email"
+              required
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              className="w-full px-3.5 py-2.5 rounded-xl border border-semay-200 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
+            />
           </div>
+
           <div>
             <label className="block text-sm font-medium text-semay-700 mb-1">Password</label>
-            <input type="password" required minLength={6} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="w-full px-3.5 py-2.5 rounded-xl border border-semay-200 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30" />
+            <div className="relative">
+              <input
+                type={showPass ? "text" : "password"}
+                required
+                minLength={6}
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                className="w-full px-3.5 py-2.5 pr-11 rounded-xl border border-semay-200 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPass((v) => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-semay-400 hover:text-semay-700"
+                aria-label={showPass ? "Hide password" : "Show password"}
+              >
+                {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            <p className="text-[11px] text-semay-400 mt-1">
+              {isAm ? "ቢያንስ 6 ቁምፊ" : "At least 6 characters"}
+            </p>
           </div>
+
           <div>
-            <label className="block text-sm font-medium text-semay-700 mb-1">{isAm ? "የድርጅት ስም" : "Business / School Name"}</label>
-            <input required value={form.organizationName} onChange={(e) => setForm({ ...form, organizationName: e.target.value })} className="w-full px-3.5 py-2.5 rounded-xl border border-semay-200 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30" />
+            <label className="block text-sm font-medium text-semay-700 mb-1">
+              {isAm ? "የድርጅት ስም" : "Business / School Name"}
+            </label>
+            <input
+              required
+              value={form.organizationName}
+              onChange={(e) => setForm({ ...form, organizationName: e.target.value })}
+              className="w-full px-3.5 py-2.5 rounded-xl border border-semay-200 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
+            />
           </div>
+
           <div>
-            <label className="block text-sm font-medium text-semay-700 mb-1">{isAm ? "ዓይነት" : "Type"}</label>
-            <select value={form.businessType} onChange={(e) => setForm({ ...form, businessType: e.target.value })} className="w-full px-3.5 py-2.5 rounded-xl border border-semay-200 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30">
+            <label className="block text-sm font-medium text-semay-700 mb-1">
+              {isAm ? "ዓይነት" : "Type"}
+            </label>
+            <select
+              value={form.businessType}
+              onChange={(e) => setForm({ ...form, businessType: e.target.value })}
+              className="w-full px-3.5 py-2.5 rounded-xl border border-semay-200 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
+            >
               {BUSINESS_TYPES.map((b) => (
-                <option key={b.value} value={b.value}>{isAm ? b.labelAm : b.label}</option>
+                <option key={b.value} value={b.value}>
+                  {isAm ? b.labelAm : b.label}
+                </option>
               ))}
             </select>
           </div>
-          {error && <div className="text-sm text-danger bg-red-50 border border-red-100 rounded-xl px-3 py-2">{error}</div>}
-          <button type="submit" disabled={loading} className="w-full bg-semay-900 text-white py-3 rounded-xl font-medium hover:bg-semay-800 transition disabled:opacity-60">
-            {loading ? "..." : (isAm ? "ተመዝገብ" : "Create Account")}
+
+          {error && (
+            <div className="text-sm text-danger bg-red-50 border border-red-100 rounded-xl px-3 py-2">
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-semay-900 text-white py-3 rounded-xl font-medium hover:bg-semay-800 transition disabled:opacity-60"
+          >
+            {loading ? "..." : isAm ? "ተመዝገብ" : "Create Account"}
           </button>
         </form>
+
         <p className="text-center text-sm text-semay-500 mt-6">
           <Link to="/login" className="font-medium text-semay-900 hover:underline">
             {isAm ? "አስቀድመው መለያ አለዎት? ይግቡ" : "Already have an account? Sign in"}

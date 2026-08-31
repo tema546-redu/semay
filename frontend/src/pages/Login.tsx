@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import { Globe } from "lucide-react"
+import { Globe, Eye, EyeOff } from "lucide-react"
 import { useAuth } from "../lib/auth"
 
 export default function Login() {
@@ -10,6 +10,7 @@ export default function Login() {
   const navigate = useNavigate()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [showPass, setShowPass] = useState(false)
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
 
@@ -50,7 +51,10 @@ export default function Login() {
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="bg-white border border-semay-200 rounded-2xl p-8 shadow-sm space-y-5">
+        <form
+          onSubmit={handleSubmit}
+          className="bg-white border border-semay-200 rounded-2xl p-8 shadow-sm space-y-5"
+        >
           <div>
             <label className="block text-sm font-medium text-semay-700 mb-1.5">Email</label>
             <input
@@ -63,13 +67,23 @@ export default function Login() {
           </div>
           <div>
             <label className="block text-sm font-medium text-semay-700 mb-1.5">Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-semay-200 focus:outline-none focus:ring-2 focus:ring-accent/30 text-sm"
-              required
-            />
+            <div className="relative">
+              <input
+                type={showPass ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full px-3.5 py-2.5 pr-11 rounded-xl border border-semay-200 focus:outline-none focus:ring-2 focus:ring-accent/30 text-sm"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPass((v) => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-semay-400 hover:text-semay-700"
+                aria-label={showPass ? "Hide password" : "Show password"}
+              >
+                {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
           {error && (
             <div className="text-sm text-danger bg-red-50 border border-red-100 rounded-xl px-3 py-2">
@@ -94,6 +108,7 @@ export default function Login() {
 
         <div className="mt-4 flex justify-center">
           <button
+            type="button"
             onClick={() => i18n.changeLanguage(i18n.language === "en" ? "am" : "en")}
             className="flex items-center gap-2 text-sm text-semay-500 hover:text-semay-800"
           >

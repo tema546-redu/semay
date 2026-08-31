@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { ArrowLeft, ToggleLeft, ToggleRight, Plus, X, Pencil, Trash2 } from "lucide-react"
-import { menuApi } from "../../lib/api"
+import { menuApi, stockApi } from "../../lib/api"
 import { cn } from "../../lib/utils"
 
 const emptyForm = {
@@ -13,20 +13,26 @@ const emptyForm = {
   imageUrl: "",
 }
 
+type RecipeRow = { stockItemId: string; qtyPerSale: string }
+
 export default function MenuPage() {
   const { i18n } = useTranslation()
   const isAm = i18n.language === "am"
   const [items, setItems] = useState<any[]>([])
+  const [stockList, setStockList] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [show, setShow] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState(emptyForm)
+  const [recipes, setRecipes] = useState<RecipeRow[]>([{ stockItemId: "", qtyPerSale: "" }])
 
   const load = () =>
-    menuApi
-      .list()
-      .then(setItems)
+    Promise.all([menuApi.list(), stockApi.list().catch(() => [])])
+      .then(([menu, stock]) => {
+        setItems(menu || [])
+        setStockList(stock || [])
+      })
       .catch(console.error)
       .finally(() => setLoading(false))
 
@@ -58,10 +64,11 @@ export default function MenuPage() {
   const openCreate = () => {
     setEditingId(null)
     setForm(emptyForm)
+    setRecipes([{ stockItemId: "", qtyPerSale: "" }])
     setShow(true)
   }
 
-  const openEdit = (item: any) => {
+  const openEdit = async (item: any) => {
     setEditingId(item.id)
     setForm({
       name: item.name || "",
@@ -70,6 +77,21 @@ export default function MenuPage() {
       price: String(item.price ?? ""),
       imageUrl: item.imageUrl || "",
     })
+    try {
+      const lines = await stockApi.getRecipe(item.id)
+      if (lines?.length) {
+        setRecipes(
+          lines.map((l: any) => ({
+            stockItemId: l.stockItemId,
+            qtyPerSale: String(l.qtyPerSale),
+          }))
+        )
+      } else {
+        setRecipes([{ stockItemId: "", qtyPerSale: "" }])
+      }
+    } catch {
+      setRecipes([{ stockItemId: "", qtyPerSale: "" }])
+    }
     setShow(true)
   }
 
@@ -80,6 +102,17 @@ export default function MenuPage() {
       setItems((p) => p.filter((i) => i.id !== id))
     } catch (e: any) {
       alert(e.message || "Delete failed")
+    }
+  }
+
+  const saveRecipes = async (menuItemId: string) => {
+    const valid = recipes.filter((r) => r.stockItemId && Number(r.qtyPerSale) > 0)
+    for (const r of valid) {
+      await stockApi.setRecipe({
+        menuItemId,
+        stockItemId: r.stockItemId,
+        qtyPerSale: Number(r.qtyPerSale),
+      })
     }
   }
 
@@ -95,14 +128,18 @@ export default function MenuPage() {
         price: Number(form.price),
         imageUrl: form.imageUrl || null,
       }
+      let id = editingId
       if (editingId) {
         await menuApi.update(editingId, payload)
       } else {
-        await menuApi.create(payload)
+        const created = await menuApi.create(payload)
+        id = created.id
       }
+      if (id) await saveRecipes(id)
       setShow(false)
       setEditingId(null)
       setForm(emptyForm)
+      setRecipes([{ stockItemId: "", qtyPerSale: "" }])
       setLoading(true)
       load()
     } catch (err) {
@@ -116,7 +153,7 @@ export default function MenuPage() {
   const cats = Array.from(new Set(items.map((i) => i.category)))
 
   return (
-    <div className="min-h-svh bg-semay-50">
+    <div className="min-h-svh bg-semay-50 pb-8">
       <header className="bg-white border-b border-semay-200 px-6 h-14 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-4">
           <Link to="/dashboard" className="p-2 -ml-2 rounded-lg hover:bg-semay-100">
@@ -141,9 +178,29 @@ export default function MenuPage() {
           </h2>
           <p className="text-sm text-semay-500">
             {isAm
-              ? "እቃ ጨምሩ፣ ያርትዑ፣ ሰርዙ ወይም 86 ያድርጉ"
-              : "Add, edit, delete, change photo, or mark 86'd"}
+              ? "እቃ + ንጥረ ነገር ከክምችት — POS ሲሸጥ ክምችት ይቀንሳል"
+              : "Add item + ingredients from Stock — POS sales reduce store"}
           </p>
+          {stockList.length === 0 && (
+            <p className="text-xs text-amber-700 mt-2">
+              {isAm ? (
+                <>
+                  መጀመሪያ{" "}
+                  <Link to="/stock" className="underline font-medium">
+                    ክምችት
+                  </Link>{" "}
+                  ላይ ዱቄት/ዘይት ይጨምሩ
+                </>
+              ) : (
+                <>
+                  First add flour/oil on{" "}
+                  <Link to="/stock" className="underline font-medium">
+                    Stock
+                  </Link>
+                </>
+              )}
+            </p>
+          )}
         </div>
 
         {loading ? (
@@ -292,7 +349,7 @@ export default function MenuPage() {
               />
               <div>
                 <label className="text-sm text-semay-600 block mb-1">
-                  {isAm ? "ፎቶ (ቀይር ወይም ጨምር)" : "Photo (add or replace)"}
+                  {isAm ? "ፎቶ" : "Photo"}
                 </label>
                 <input type="file" accept="image/*" onChange={onImage} className="text-sm w-full" />
                 {form.imageUrl && (
@@ -307,11 +364,75 @@ export default function MenuPage() {
                       className="text-xs text-rose-600"
                       onClick={() => setForm((f) => ({ ...f, imageUrl: "" }))}
                     >
-                      {isAm ? "ፎቶ አስወግድ" : "Remove photo"}
+                      {isAm ? "አስወግድ" : "Remove"}
                     </button>
                   </div>
                 )}
               </div>
+
+              {/* Ingredients from Stock */}
+              <div className="border border-semay-100 rounded-xl p-3 space-y-2 bg-semay-50/50">
+                <div className="text-sm font-medium text-semay-800">
+                  {isAm ? "ንጥረ ነገር (ለ 1 ምግብ)" : "Ingredients (for 1 sale)"}
+                </div>
+                <p className="text-[11px] text-semay-500">
+                  {isAm
+                    ? "ምሳሌ፡ ቡርገር = 0.15 kg ስጋ + 0.02 L ዘይት"
+                    : "Example: Burger = 0.15 kg meat + 0.02 L oil"}
+                </p>
+                {recipes.map((r, idx) => (
+                  <div key={idx} className="flex gap-2 items-center">
+                    <select
+                      value={r.stockItemId}
+                      onChange={(e) => {
+                        const next = [...recipes]
+                        next[idx] = { ...next[idx], stockItemId: e.target.value }
+                        setRecipes(next)
+                      }}
+                      className="flex-1 px-2 py-2 rounded-lg border border-semay-200 text-sm"
+                    >
+                      <option value="">
+                        {isAm ? "ከክምችት ምረጥ" : "From stock…"}
+                      </option>
+                      {stockList.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name} ({s.quantity} {s.unit})
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.001"
+                      placeholder={isAm ? "ብዛት" : "Qty"}
+                      value={r.qtyPerSale}
+                      onChange={(e) => {
+                        const next = [...recipes]
+                        next[idx] = { ...next[idx], qtyPerSale: e.target.value }
+                        setRecipes(next)
+                      }}
+                      className="w-20 px-2 py-2 rounded-lg border border-semay-200 text-sm"
+                    />
+                    <button
+                      type="button"
+                      className="text-xs text-rose-500 px-1"
+                      onClick={() => setRecipes((p) => p.filter((_, i) => i !== idx))}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() =>
+                    setRecipes((p) => [...p, { stockItemId: "", qtyPerSale: "" }])
+                  }
+                  className="text-xs font-medium text-semay-700 underline"
+                >
+                  + {isAm ? "ንጥረ ነገር ጨምር" : "Add ingredient"}
+                </button>
+              </div>
+
               <button
                 type="submit"
                 disabled={saving}

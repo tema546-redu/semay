@@ -18,6 +18,7 @@ import bakeryRoutes from "./routes/bakery.js"
 import feedbackRoutes from "./routes/feedback.js"
 import attendanceRoutes from "./routes/attendance.js"
 import pharmacyRoutes from "./routes/pharmacy.js"
+import stockRoutes from "./routes/stock.js"
 
 const app = express()
 const PORT = Number(process.env.PORT) || 3001
@@ -112,6 +113,7 @@ app.use("/api/bakery", bakeryRoutes)
 app.use("/api/feedback", feedbackRoutes)
 app.use("/api/staff/attendance", attendanceRoutes)
 app.use("/api/pharmacy", pharmacyRoutes)
+app.use("/api/stock", stockRoutes)
 // ============================================================
 // 404
 // ============================================================

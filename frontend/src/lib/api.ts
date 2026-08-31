@@ -282,3 +282,37 @@ export const pharmacyApi = {
     }),
   sales: () => request<any[]>("/api/pharmacy/sales"),
 }
+
+export const stockApi = {
+  list: () => request<any[]>("/api/stock"),
+  create: (data: {
+    name: string
+    unit: string
+    quantity: number
+    lowAt?: number | null
+    note?: string
+  }) =>
+    request<any>("/api/stock", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  addQty: (id: string, amount: number) =>
+    request<any>(`/api/stock/${id}/add`, {
+      method: "POST",
+      body: JSON.stringify({ amount }),
+    }),
+  update: (id: string, data: any) =>
+    request<any>(`/api/stock/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  remove: (id: string) =>
+    request<any>(`/api/stock/${id}`, { method: "DELETE" }),
+  setRecipe: (data: { menuItemId: string; stockItemId: string; qtyPerSale: number }) =>
+    request<any>("/api/stock/recipe", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  getRecipe: (menuItemId: string) =>
+    request<any[]>(`/api/stock/recipe/${menuItemId}`),
+}

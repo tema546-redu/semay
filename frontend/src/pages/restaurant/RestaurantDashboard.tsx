@@ -19,6 +19,8 @@ import {
   X,
   UserCircle,
   Table2,
+  Package,
+  HelpCircle,
 } from "lucide-react"
 import { restaurantApi, billingApi } from "../../lib/api"
 import { cn } from "../../lib/utils"
@@ -51,10 +53,40 @@ function SideLink({
   )
 }
 
-// Consistent currency formatting across the whole dashboard
 function fmtETB(n: number | undefined | null) {
   const val = Number(n) || 0
   return `${val.toLocaleString()} ETB`
+}
+
+function StockCircle({ s }: { s: any }) {
+  const qty = Number(s.quantity ?? 0)
+  const lowAt = s.lowAt != null ? Number(s.lowAt) : null
+  const low = lowAt != null && lowAt > 0 ? lowAt : Math.max(qty * 0.2, 1)
+  const full = Math.max(low * 5, qty, 1)
+  const pct = Math.min(100, Math.max(0, Math.round((qty / full) * 100)))
+  const danger = s.isLow === true || (lowAt != null && qty <= lowAt)
+  const color = danger ? "#f59e0b" : "#059669"
+
+  return (
+    <div className="flex flex-col items-center w-[76px]">
+      <div
+        className="w-14 h-14 rounded-full"
+        style={{ background: `conic-gradient(${color} ${pct}%, #e2e8f0 0)` }}
+      >
+        <div className="w-full h-full p-[5px]">
+          <div className="w-full h-full rounded-full bg-white flex items-center justify-center">
+            <span className="text-[10px] font-semibold tabular-nums text-semay-800">{pct}%</span>
+          </div>
+        </div>
+      </div>
+      <div className="text-[10px] font-medium text-semay-800 truncate w-full text-center mt-1">
+        {s.name}
+      </div>
+      <div className="text-[9px] text-semay-500 tabular-nums">
+        {qty} {s.unit || ""}
+      </div>
+    </div>
+  )
 }
 
 export default function RestaurantDashboard() {
@@ -108,6 +140,8 @@ export default function RestaurantDashboard() {
   const healthColor =
     health >= 80 ? "text-emerald-600" : health >= 50 ? "text-amber-600" : "text-red-500"
 
+  const stockList = data?.stockOverview || []
+
   const closeMobileMenu = () => setMobileMenuOpen(false)
 
   const handleLogout = () => {
@@ -124,19 +158,20 @@ export default function RestaurantDashboard() {
     { to: "/reservations", icon: <CalendarDays className="w-4 h-4" />, label: "Reservations" },
     { to: "/staff", icon: <Users className="w-4 h-4" />, label: "Staff" },
     { to: "/tables", icon: <Table2 className="w-4 h-4" />, label: isAm ? "ጠረጴዛ" : "Tables" },
-    { to: "/expenses", icon: <FileText className="w-4 h-4" />, label: isAm ? "ወጪ" : "Expenses" },
+    { to: "/stock", icon: <Package className="w-4 h-4" />, label: isAm ? "ክምችት" : "Stock" },
     { to: "/reports", icon: <FileText className="w-4 h-4" />, label: "Reports" },
     { to: "/restaurant/settings", icon: <Settings className="w-4 h-4" />, label: "Settings" },
     { to: "/billing", icon: <CreditCard className="w-4 h-4" />, label: "Billing" },
     { to: "/ai", icon: <Sparkles className="w-4 h-4" />, label: "Semay AI" },
+    { to: "/help", icon: <HelpCircle className="w-4 h-4" />, label: isAm ? "እገዛ" : "Help" },
     { to: "/profile", icon: <UserCircle className="w-4 h-4" />, label: isAm ? "መገለጫ" : "Profile" },
   ]
 
   const footerNav = [
     { to: "/dashboard", label: "Home", icon: <LayoutDashboard className="w-5 h-5" /> },
     { to: "/pos", label: "POS", icon: <UtensilsCrossed className="w-5 h-5" /> },
-    { to: "/reports", label: "Reports", icon: <FileText className="w-5 h-5" /> },
-    { to: "/restaurant/settings", label: "Settings", icon: <Settings className="w-5 h-5" /> },
+    { to: "/stock", label: isAm ? "ክምችት" : "Stock", icon: <Package className="w-5 h-5" /> },
+    { to: "/help", label: isAm ? "እገዛ" : "Help", icon: <HelpCircle className="w-5 h-5" /> },
     { to: "/profile", label: "Profile", icon: <UserCircle className="w-5 h-5" /> },
   ]
 
@@ -199,7 +234,11 @@ export default function RestaurantDashboard() {
               <div className="text-[10px] text-semay-400 truncate">{settings?.name || "Restaurant"}</div>
             </div>
           </div>
-          <button type="button" onClick={closeMobileMenu} className="w-9 h-9 rounded-xl flex items-center justify-center">
+          <button
+            type="button"
+            onClick={closeMobileMenu}
+            className="w-9 h-9 rounded-xl flex items-center justify-center"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -294,20 +333,57 @@ export default function RestaurantDashboard() {
                     key={k.label}
                     className="bg-white border border-semay-100 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow"
                   >
-                    <div className="text-[10px] font-semibold tracking-wide text-semay-400 uppercase">{k.label}</div>
+                    <div className="text-[10px] font-semibold tracking-wide text-semay-400 uppercase">
+                      {k.label}
+                    </div>
                     <div className="flex items-baseline gap-1.5 mt-1">
                       <div className="text-2xl font-semibold text-semay-900 tabular-nums">{k.value}</div>
-                      {k.accent && (
-                        <TrendingUp className={cn("w-4 h-4", healthColor)} />
-                      )}
+                      {k.accent && <TrendingUp className={cn("w-4 h-4", healthColor)} />}
                     </div>
                     {k.sub && (
-                      <div className={cn("text-xs mt-0.5 font-medium", k.accent ? healthColor : "text-semay-500")}>
+                      <div
+                        className={cn(
+                          "text-xs mt-0.5 font-medium",
+                          k.accent ? healthColor : "text-semay-500"
+                        )}
+                      >
                         {k.sub}
                       </div>
                     )}
                   </div>
                 ))}
+              </div>
+
+              {/* Store levels — always shown */}
+              <div className="bg-white border border-semay-100 rounded-xl p-4 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-sm font-semibold text-semay-900 flex items-center gap-2">
+                    <Package className="w-4 h-4 text-semay-600" />
+                    {isAm ? "ክምችት (መደብር)" : "Store levels"}
+                  </h2>
+                  <Link to="/stock" className="text-xs font-medium text-semay-500">
+                    {isAm ? "ክፈት →" : "Open store →"}
+                  </Link>
+                </div>
+                {stockList.length === 0 ? (
+                  <div className="text-sm text-semay-400 py-4 text-center">
+                    {isAm ? "ክምችት ባዶ ነው።" : "No stock yet — add flour, oil, meat…"}
+                    <div className="mt-2">
+                      <Link
+                        to="/stock"
+                        className="text-xs font-medium bg-semay-900 text-white px-3 py-1.5 rounded-full inline-block"
+                      >
+                        {isAm ? "ክምችት ጨምር" : "Add stock"}
+                      </Link>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-4">
+                    {stockList.slice(0, 8).map((s: any) => (
+                      <StockCircle key={s.id} s={s} />
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="bg-white border border-semay-100 rounded-xl p-4 shadow-sm">
@@ -331,20 +407,15 @@ export default function RestaurantDashboard() {
                       <Link
                         key={o.id}
                         to="/kds"
-                        className="shrink-0 min-w-[140px] rounded-xl border border-semay-100 bg-semay-50 px-3 py-2 hover:border-semay-200 transition-colors"
+                        className="shrink-0 min-w-[140px] rounded-xl border border-semay-100 bg-semay-50 px-3 py-2"
                       >
                         <div className="flex items-center gap-1.5 text-xs font-medium">
-                          <span className="relative flex w-1.5 h-1.5">
-                            {o.status === "READY" && (
-                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                          <span
+                            className={cn(
+                              "inline-flex w-1.5 h-1.5 rounded-full",
+                              o.status === "READY" ? "bg-green-500" : "bg-amber-400"
                             )}
-                            <span
-                              className={cn(
-                                "relative inline-flex w-1.5 h-1.5 rounded-full",
-                                o.status === "READY" ? "bg-green-500" : "bg-amber-400"
-                              )}
-                            />
-                          </span>
+                          />
                           Table {o.tableNumber}
                         </div>
                         <div className="text-[11px] text-semay-500 mt-0.5 tabular-nums">
@@ -356,7 +427,6 @@ export default function RestaurantDashboard() {
                 )}
               </div>
 
-              {/* Daily (hourly) chart */}
               <div className="bg-white border border-semay-100 rounded-xl p-4 md:p-5 shadow-sm">
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                   <h2 className="text-sm font-semibold text-semay-900 flex items-center gap-2">
@@ -369,24 +439,29 @@ export default function RestaurantDashboard() {
                 </div>
                 <div className="flex items-end gap-1 h-36 overflow-x-auto">
                   {hours.length === 0 ? (
-                    <p className="text-sm text-semay-400 w-full text-center py-8">No data yet — open POS</p>
+                    <p className="text-sm text-semay-400 w-full text-center py-8">
+                      No data yet — open POS
+                    </p>
                   ) : (
                     hours.map((d: any) => {
                       const sales = Number(d.sales) || 0
-                      const h = sales <= 0 ? 3 : Math.max(6, Math.round((sales / maxHourSales) * 100))
+                      const h =
+                        sales <= 0 ? 3 : Math.max(6, Math.round((sales / maxHourSales) * 100))
                       return (
                         <div
                           key={d.hour}
                           className="flex-1 min-w-[28px] flex flex-col items-center gap-1 h-full justify-end group relative"
                         >
                           <div className="absolute bottom-full mb-1 opacity-0 group-hover:opacity-100 text-[10px] bg-semay-900 text-white px-1.5 py-0.5 rounded z-10 whitespace-nowrap tabular-nums">
-                            {d.label}: {fmtETB(sales)}
+                            {d.label || `${d.hour}:00`}: {fmtETB(sales)}
                           </div>
                           <div
                             className="w-full rounded-t-md bg-emerald-600/90 hover:bg-emerald-700 transition-all"
                             style={{ height: `${h}%` }}
                           />
-                          <div className="text-[9px] text-semay-400">{String(d.hour).padStart(2, "0")}</div>
+                          <div className="text-[9px] text-semay-400">
+                            {String(d.hour).padStart(2, "0")}
+                          </div>
                         </div>
                       )
                     })
@@ -401,7 +476,10 @@ export default function RestaurantDashboard() {
                     <div className="text-sm text-semay-400 py-6 text-center">
                       No sales yet
                       <div className="mt-2">
-                        <Link to="/pos" className="text-xs font-medium bg-semay-900 text-white px-3 py-1.5 rounded-full">
+                        <Link
+                          to="/pos"
+                          className="text-xs font-medium bg-semay-900 text-white px-3 py-1.5 rounded-full"
+                        >
                           Open POS
                         </Link>
                       </div>
@@ -409,7 +487,10 @@ export default function RestaurantDashboard() {
                   ) : (
                     <ul className="space-y-2">
                       {data.bestSellers.map((item: any, i: number) => (
-                        <li key={item.name} className="flex items-center justify-between text-sm gap-3">
+                        <li
+                          key={item.name}
+                          className="flex items-center justify-between text-sm gap-3"
+                        >
                           <span className="text-semay-700 truncate">
                             {i + 1}. {item.name}
                           </span>
@@ -470,18 +551,25 @@ export default function RestaurantDashboard() {
                   </div>
 
                   <div className="bg-white border border-semay-100 rounded-xl p-4 shadow-sm">
-                    <h2 className="text-sm font-semibold text-semay-900 mb-1 flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 text-amber-500" />
-                      Low Stock
-                    </h2>
+                    <div className="flex items-center justify-between mb-1">
+                      <h2 className="text-sm font-semibold text-semay-900 flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-amber-500" />
+                        {isAm ? "ዝቅተኛ ክምችት" : "Low Stock"}
+                      </h2>
+                      <Link to="/stock" className="text-xs text-semay-500 font-medium">
+                        {isAm ? "መደብር →" : "Store →"}
+                      </Link>
+                    </div>
                     {!data?.lowStock?.length ? (
                       <p className="text-sm text-semay-400">All stock levels OK</p>
                     ) : (
                       <ul className="text-sm space-y-1">
                         {data.lowStock.map((m: any) => (
-                          <li key={m.id} className="flex justify-between">
-                            <span>{m.name}</span>
-                            <span className="text-amber-600 tabular-nums">{m.stockQty}</span>
+                          <li key={m.id} className="flex justify-between gap-2">
+                            <span className="truncate">{m.name}</span>
+                            <span className="text-amber-600 tabular-nums shrink-0">
+                              {m.stockQty ?? `${m.quantity ?? ""} ${m.unit || ""}`}
+                            </span>
                           </li>
                         ))}
                       </ul>
@@ -494,7 +582,6 @@ export default function RestaurantDashboard() {
         </div>
       </main>
 
-      {/* Mobile footer: Home, POS, Reports, Settings, Profile */}
       <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-semay-200">
         <div className="grid grid-cols-5 h-16">
           {footerNav.map((item) => {

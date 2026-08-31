@@ -122,6 +122,7 @@ model Organization {
   bakerySales       BakerySale[]
   pharmacyProducts PharmacyProduct[]
   pharmacySales    PharmacySale[]
+  stockItems StockItem[]
 }
 
 model Subscription {
@@ -156,6 +157,7 @@ model MenuItem {
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   orderItems     OrderItem[]
+  recipeLines RecipeLine[]
 }
 
 model Order {
@@ -538,4 +540,33 @@ model PharmacySaleItem {
   name      String
   quantity  Int
   price     Decimal         @db.Decimal(12, 2)
+}
+
+model StockItem {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  unit           String   @default("kg") // kg | L | pcs
+  quantity       Decimal  @db.Decimal(14, 3)
+  lowAt          Decimal? @db.Decimal(14, 3)
+  note           String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  recipeLines  RecipeLine[]
+
+  @@index([organizationId])
+}
+
+model RecipeLine {
+  id          String  @id @default(cuid())
+  menuItemId  String
+  stockItemId String
+  qtyPerSale  Decimal @db.Decimal(14, 4)
+
+  menuItem  MenuItem  @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  stockItem StockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+
+  @@unique([menuItemId, stockItemId])
 }

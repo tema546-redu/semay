@@ -38,6 +38,7 @@ import BakeryReports from "./pages/bakery/Reports"
 import PharmacyDashboard from "./pages/pharmacy/PharmacyDashboard"
 import PharmacyProducts from "./pages/pharmacy/Products"
 import PharmacySell from "./pages/pharmacy/Sell"
+import Stock from "./pages/restaurant/Stock"
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, loading } = useAuth()
@@ -91,8 +92,9 @@ function App() {
       <Route path="/bakery/settings" element={<ProtectedRoute><BakerySettings /></ProtectedRoute>} />
       <Route path="/bakery/reports" element={<ProtectedRoute><BakeryReports /></ProtectedRoute>} />
       <Route path="/pharmacy" element={<ProtectedRoute><PharmacyDashboard /></ProtectedRoute>} />
-<Route path="/pharmacy/products" element={<ProtectedRoute><PharmacyProducts /></ProtectedRoute>} />
-<Route path="/pharmacy/sell" element={<ProtectedRoute><PharmacySell /></ProtectedRoute>} />
+      <Route path="/pharmacy/products" element={<ProtectedRoute><PharmacyProducts /></ProtectedRoute>} />
+      <Route path="/pharmacy/sell" element={<ProtectedRoute><PharmacySell /></ProtectedRoute>} />
+      <Route path="/stock" element={<ProtectedRoute><Stock /></ProtectedRoute>} />
     <Route
   path="/expenses"
   element={

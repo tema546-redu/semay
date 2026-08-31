@@ -216,11 +216,29 @@ router.get("/analytics", async (req, res) => {
     .sort((a, b) => b.qty - a.qty)
     .slice(0, 8)
 
-  const lowStock = await prisma.menuItem.findMany({
-    where: { organizationId, stockQty: { not: null, lte: 10 } },
-    orderBy: { stockQty: "asc" },
-    take: 10,
-  })
+  // ——— Stock overview + low stock ———
+  let stockOverview: any[] = []
+  let lowStock: any[] = []
+  try {
+    const stockItems = await prisma.stockItem.findMany({
+      where: { organizationId },
+      orderBy: { name: "asc" },
+    })
+    stockOverview = stockItems.map((s) => ({
+      id: s.id,
+      name: s.name,
+      quantity: Number(s.quantity),
+      unit: s.unit,
+      lowAt: s.lowAt != null ? Number(s.lowAt) : null,
+      isLow: s.lowAt != null && Number(s.quantity) <= Number(s.lowAt),
+      stockQty: `${Number(s.quantity)} ${s.unit}`,
+    }))
+    lowStock = stockOverview.filter((s) => s.isLow)
+  } catch {
+    // StockItem model may not exist yet
+    stockOverview = []
+    lowStock = []
+  }
 
   const todaySales = dailyMap[todayKey]?.sales || 0
   const todayOrderCount = dailyMap[todayKey]?.orders || 0
@@ -245,13 +263,17 @@ router.get("/analytics", async (req, res) => {
   const weekSales = last7Days.reduce((s, d) => s + d.sales, 0)
   const weekOrders = last7Days.reduce((s, d) => s + d.orders, 0)
 
-  let health = 50
-  if (weekOrders >= 5) health += 10
+ let health = 40
+  if (todayOrderCount >= 1) health += 15
+  if (todayOrderCount >= 10) health += 10
+  if (todaySales >= 500) health += 10
+  if (todaySales >= 2000) health += 5
   if (weekOrders >= 20) health += 10
-  if (todaySales > 0) health += 10
-  if (lowStock.length === 0) health += 10
-  if (activeOrders < 20) health += 10
-  health = Math.min(100, health)
+  if (lowStock.length === 0 && stockOverview.length > 0) health += 10
+  if (lowStock.length >= 1) health -= 10
+  if (lowStock.length >= 3) health -= 10
+  if (activeOrders > 15) health -= 5
+  health = Math.max(0, Math.min(100, health))
 
   const dayEnd = new Date(todayStart)
   dayEnd.setHours(23, 59, 59, 999)
@@ -276,6 +298,7 @@ router.get("/analytics", async (req, res) => {
     hourlyChart,
     bestSellers,
     lowStock,
+    stockOverview,
     today: {
       sales: Math.round(todaySales * 100) / 100,
       orders: todayOrderCount,
@@ -333,7 +356,6 @@ router.get("/payment-report", async (req, res) => {
   res.json({ orders, byMethod })
 })
 
-/** Photos cleared after 7 days (keep as requested) */
 router.post(
   "/cleanup-receipts",
   requireRole(Role.OWNER, Role.MANAGER, Role.WAITER, Role.STAFF),
