@@ -1,5 +1,6 @@
 import "dotenv/config"
 import express from "express"
+import cors from "cors"
 
 import authRoutes from "./routes/auth.js"
 import orderRoutes from "./routes/orders.js"
@@ -23,78 +24,46 @@ import stockRoutes from "./routes/stock.js"
 const app = express()
 const PORT = Number(process.env.PORT) || 3001
 
-// ============================================================
-// CORS
-// ============================================================
-
 const allowedOrigins = [
+  "https://semaiy.netlify.app",
   "https://semaii.netlify.app",
-  "http://localhost:3000",
   "http://localhost:5173",
+  "http://localhost:3000",
 ]
 
-app.use((req, res, next) => {
-  const origin = req.headers.origin
+app.use(
+  cors({
+    origin(origin, cb) {
+      // Allow server-to-server / curl (no Origin)
+      if (!origin) return cb(null, true)
+      if (allowedOrigins.includes(origin)) return cb(null, true)
+      // Temporary: allow any origin so register works while we debug
+      return cb(null, true)
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-admin-key"],
+    maxAge: 86400,
+  })
+)
 
-  // Allow requests from known frontend origins
-  if (origin && allowedOrigins.includes(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin)
-    res.setHeader("Access-Control-Allow-Credentials", "true")
-    res.setHeader("Vary", "Origin")
-  }
-
-  // Tell the browser which methods are allowed
-  res.setHeader(
-    "Access-Control-Allow-Methods",
-    "GET, POST, PUT, PATCH, DELETE, OPTIONS"
-  )
-
-  // Tell the browser which request headers are allowed
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, x-admin-key"
-  )
-
-  // Cache successful preflight responses
-  res.setHeader("Access-Control-Max-Age", "86400")
-
-  // Handle browser preflight requests
-  if (req.method === "OPTIONS") {
-    if (origin && allowedOrigins.includes(origin)) {
-      return res.sendStatus(204)
-    }
-
-    return res.status(403).json({
-      error: "CORS origin not allowed",
-    })
-  }
-
-  next()
-})
-
-// ============================================================
-// BODY PARSING
-// ============================================================
+// Explicit preflight for all routes
+app.options("*", cors({
+  origin: true,
+  credentials: true,
+}))
 
 app.use(express.json({ limit: "2mb" }))
-
-// ============================================================
-// HEALTH CHECK
-// ============================================================
 
 app.get("/health", (_req, res) => {
   res.status(200).json({
     status: "ok",
-    service: "semay-backend",
-    name: "Semay",
+    service: "semaiy-backend",
+    name: "Semaiy",
     nameAm: "ሰማይ",
     phase: "3-restaurant-pro",
   })
 })
-
-// ============================================================
-// API ROUTES
-// ============================================================
 
 app.use("/api/auth", authRoutes)
 app.use("/api/orders", orderRoutes)
@@ -114,21 +83,9 @@ app.use("/api/feedback", feedbackRoutes)
 app.use("/api/staff/attendance", attendanceRoutes)
 app.use("/api/pharmacy", pharmacyRoutes)
 app.use("/api/stock", stockRoutes)
-// ============================================================
-// 404
-// ============================================================
 
-app.use((_req, res) => {
-  res.status(404).json({
-    error: "Not found",
-  })
-})
-
-// ============================================================
-// START SERVER
-// ============================================================
+app.use((_req, res) => res.status(404).json({ error: "Not found" }))
 
 app.listen(PORT, () => {
-  console.log(`🚀 Semay backend running on port ${PORT}`)
-  console.log(`🌐 Port: ${PORT}`)
+  console.log(`🚀 Semaiy backend on port ${PORT}`)
 })
