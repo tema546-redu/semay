@@ -1,80 +1,65 @@
 export type PlanKey = "MONTHLY" | "THREE_MONTHS" | "SIX_MONTHS" | "YEARLY"
 
-export interface PriceRow {
-  monthly: number
-  threeMonths: number
-  sixMonths: number
-  yearly: number
+const BASE_MONTHLY: Record<string, number> = {
+  CAFE: 2500,
+  RESTAURANT: 4500,
+  BAKERY: 3000,
+  GYM: 3000,
+  HOTEL: 8000,
+  SUPERMARKET: 6000,
+  PHARMACY: 3500,
+  SALON: 3000,
+  SCHOOL: 8000,
+  UNIVERSITY: 12000,
+  LIBRARY: 2500,
+  OTHER: 3000,
 }
 
-export const PRICING: Record<string, PriceRow> = {
-  CAFE: { monthly: 2500, threeMonths: 6500, sixMonths: 12000, yearly: 22000 },
-  RESTAURANT: { monthly: 4500, threeMonths: 12000, sixMonths: 22000, yearly: 40000 },
-  BAKERY: { monthly: 2500, threeMonths: 6500, sixMonths: 12000, yearly: 22000 },
-  HOTEL: { monthly: 8000, threeMonths: 21000, sixMonths: 40000, yearly: 75000 },
-  GYM: { monthly: 3000, threeMonths: 8000, sixMonths: 15000, yearly: 28000 },
-  SCHOOL: { monthly: 8000, threeMonths: 21000, sixMonths: 40000, yearly: 75000 },
-  OTHER: { monthly: 3000, threeMonths: 8000, sixMonths: 15000, yearly: 28000 },
-}
-
-export function getPrice(businessType: string, plan: PlanKey): number {
-  const row = PRICING[businessType] || PRICING.OTHER
-  switch (plan) {
-    case "MONTHLY":
-      return row.monthly
-    case "THREE_MONTHS":
-      return row.threeMonths
-    case "SIX_MONTHS":
-      return row.sixMonths
-    case "YEARLY":
-      return row.yearly
-    default:
-      return row.monthly
-  }
+const EXTRA_BRANCH_MONTHLY: Record<string, number> = {
+  CAFE: 1500,
+  RESTAURANT: 2700,
+  BAKERY: 1800,
+  HOTEL: 4000,
+  LIBRARY: 1500,
+  DEFAULT: 2000,
 }
 
 export function planDurationDays(plan: PlanKey): number {
-  switch (plan) {
-    case "MONTHLY":
-      return 30
-    case "THREE_MONTHS":
-      return 90
-    case "SIX_MONTHS":
-      return 180
-    case "YEARLY":
-      return 365
-    default:
-      return 30
-  }
+  if (plan === "MONTHLY") return 30
+  if (plan === "THREE_MONTHS") return 90
+  if (plan === "SIX_MONTHS") return 180
+  return 365
 }
 
-export function listPlansForType(businessType: string) {
-  const row = PRICING[businessType] || PRICING.OTHER
-  return [
-    { plan: "MONTHLY" as PlanKey, label: "Monthly", labelAm: "ወርሃዊ", amount: row.monthly, days: 30, savePercent: 0 },
-    {
-      plan: "THREE_MONTHS" as PlanKey,
-      label: "3 Months",
-      labelAm: "3 ወር",
-      amount: row.threeMonths,
-      days: 90,
-      savePercent: Math.round((1 - row.threeMonths / (row.monthly * 3)) * 100),
-    },
-    {
-      plan: "SIX_MONTHS" as PlanKey,
-      label: "6 Months",
-      labelAm: "6 ወር",
-      amount: row.sixMonths,
-      days: 180,
-      savePercent: Math.round((1 - row.sixMonths / (row.monthly * 6)) * 100),
-    },
-    {
-      plan: "YEARLY" as PlanKey,
-      label: "Annual",
-      labelAm: "ዓመታዊ",
-      amount: row.yearly,
-      days: 365,
-      savePercent: Math.round((1 - row.yearly / (row.monthly * 12)) * 100),
-    },
-  ]
+function monthlyFor(type: string, branches: number): number {
+  const t = String(type || "OTHER").toUpperCase()
+  const base = BASE_MONTHLY[t] ?? BASE_MONTHLY.OTHER
+  const extraUnit = EXTRA_BRANCH_MONTHLY[t] ?? EXTRA_BRANCH_MONTHLY.DEFAULT
+  const n = Math.max(1, branches || 1)
+  return base + Math.max(0, n - 1) * extraUnit
+}
+
+export function getPrice(type: string, plan: PlanKey, branchCount = 1): number {
+  const t = String(type || "OTHER").toUpperCase()
+  const monthly = monthlyFor(t, branchCount)
+
+  if (plan === "YEARLY" && t === "RESTAURANT" && branchCount <= 1) {
+    return 40000
+  }
+  if (plan === "YEARLY") return Math.round(monthly * 9)
+  if (plan === "SIX_MONTHS") return Math.round(monthly * 5)
+  if (plan === "THREE_MONTHS") return Math.round(monthly * 2.6)
+  return monthly
+}
+
+export function listPlansForType(type: string, branchCount = 1) {
+  const keys: PlanKey[] = ["MONTHLY", "THREE_MONTHS", "SIX_MONTHS", "YEARLY"]
+  const n = Math.max(1, branchCount || 1)
+  return keys.map((plan) => ({
+    plan,
+    amount: getPrice(type, plan, n),
+    days: planDurationDays(plan),
+    branchCount: n,
+    currency: "ETB",
+  }))
 }

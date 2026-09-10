@@ -5,6 +5,46 @@ import { ArrowLeft, CreditCard, Copy } from "lucide-react"
 import { billingApi } from "../lib/api"
 import { cn } from "../lib/utils"
 
+function printSemayReceipt(opts: {
+  orgName: string
+  plan: string
+  amount: number
+  ref: string
+  method: string
+  status: string
+  endDate?: string
+}) {
+  const w = window.open("", "_blank", "width=360,height=520")
+  if (!w) {
+    alert("Allow pop-ups to print receipt")
+    return
+  }
+  const when = new Date().toLocaleString()
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Semay Receipt</title>
+<style>
+  body{font-family:system-ui,sans-serif;padding:24px;color:#111;max-width:320px;margin:0 auto}
+  h1{font-size:16px;margin:0 0 4px}
+  .sub{color:#666;font-size:12px;margin-bottom:16px}
+  .row{display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-bottom:1px solid #eee}
+  .foot{margin-top:20px;font-size:11px;color:#666;text-align:center}
+  @media print{button{display:none}}
+</style></head><body>
+  <h1>Semay · ሰማይ</h1>
+  <div class="sub">Subscription receipt</div>
+  <div class="row"><span>Business</span><strong>${opts.orgName}</strong></div>
+  <div class="row"><span>Plan</span><strong>${opts.plan}</strong></div>
+  <div class="row"><span>Amount</span><strong>${opts.amount.toLocaleString()} ETB</strong></div>
+  <div class="row"><span>Method</span><strong>${opts.method}</strong></div>
+  <div class="row"><span>Reference</span><strong>${opts.ref}</strong></div>
+  <div class="row"><span>Status</span><strong>${opts.status}</strong></div>
+  ${opts.endDate ? `<div class="row"><span>Valid until</span><strong>${new Date(opts.endDate).toLocaleDateString()}</strong></div>` : ""}
+  <div class="row"><span>Printed</span><span>${when}</span></div>
+  <p class="foot">Not a bank slip. Semay activates after verification.<br/>Thank you.</p>
+  <script>window.onload=()=>{window.print()}</script>
+</body></html>`)
+  w.document.close()
+}
+
 export default function Billing() {
   const { i18n } = useTranslation()
   const isAm = i18n.language === "am"
@@ -132,6 +172,13 @@ export default function Billing() {
                       )}
                     >
                       {sub.status}
+                      {Number(data?.branchCount) > 1 && (
+                                        <p className="text-xs text-semay-500 pt-1">
+                                          {isAm
+                                            ? `ዋጋው ${data.branchCount} ቅርንጫፎችን ያካትታል። ተጨማሪ ቅርንጫፍ ወርሃዊ ክፍያን ይጨምራል።`
+                                            : `Price includes ${data.branchCount} branches. Extra branches increase the monthly fee.`}
+                                          </p>
+                                        )} 
                       {sub.isTrial ? " (trial)" : ""}
                       {isPending ? (isAm ? " — በመጠባበቅ ላይ" : " — awaiting approval") : ""}
                     </span>
@@ -150,6 +197,25 @@ export default function Billing() {
                       <span className="font-mono text-xs">{sub.paymentRef}</span>
                     </div>
                   )}
+                  {(sub.paymentRef || isPending || sub.isActive) && (
+  <button
+    type="button"
+    className="mt-3 w-full text-sm border border-semay-200 py-2 rounded-xl"
+    onClick={() =>
+      printSemayReceipt({
+        orgName: data?.organizationName || "Business",
+        plan: String(sub.plan || selected || ""),
+        amount: Number(sub.amount || amount || 0),
+        ref: String(sub.paymentRef || reference || "—"),
+        method: String(sub.paymentMethod || method || "—"),
+        status: String(sub.status || ""),
+        endDate: sub.endDate,
+      })
+    }
+  >
+    {isAm ? "ደረሰኝ አትም" : "Print Semay receipt"}
+  </button>
+)}
                 </>
               ) : (
                 <p className="text-semay-500">No subscription</p>

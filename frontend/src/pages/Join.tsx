@@ -1,114 +1,170 @@
 import { useEffect, useState } from "react"
-import { Link, useNavigate, useParams } from "react-router-dom"
-import { staffApi } from "../lib/api"
-
+import { Link, useParams, useSearchParams } from "react-router-dom"
+import { staffApi, setToken } from "../lib/api"
 
 export default function Join() {
-  const { code } = useParams<{ code: string }>()
-  const navigate = useNavigate()
+  const { code: codeParam } = useParams()
+  const [search] = useSearchParams()
+  const code = (codeParam || search.get("code") || "").trim().toUpperCase()
+
+  const [phase, setPhase] = useState<"loading" | "form" | "error">("loading")
   const [info, setInfo] = useState<any>(null)
   const [error, setError] = useState("")
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState({ name: "", email: "", password: "" })
+  const [name, setName] = useState("")
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    if (!code) return
+    if (!code) {
+      setError("Missing invite code. Open the full link from the library owner.")
+      setPhase("error")
+      return
+    }
+
+    let cancelled = false
+    const timer = window.setTimeout(() => {
+      if (!cancelled) {
+        setError("Request timed out. Is the backend running on port 3001?")
+        setPhase("error")
+      }
+    }, 12000)
+
     staffApi
       .getInvite(code)
-      .then(setInfo)
-      .catch((e) => setError(e.message || "Invalid invite"))
-      .finally(() => setLoading(false))
+      .then((data) => {
+        if (cancelled) return
+        setInfo(data)
+        setPhase("form")
+      })
+      .catch((e: any) => {
+        if (cancelled) return
+        setError(e?.message || "Invalid or expired invite")
+        setPhase("error")
+      })
+      .finally(() => {
+        window.clearTimeout(timer)
+      })
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
   }, [code])
 
   const submit = async (e: React.FormEvent) => {
-  e.preventDefault()
-  if (!code) return
-  setSaving(true)
-  setError("")
-  try {
-    const res = await staffApi.join({
-      code,
-      name: form.name,
-      email: form.email,
-      password: form.password,
-    })
-    if (res.token) {
-      localStorage.setItem("token", res.token)
-    }
-    window.location.href = "/dashboard"
-  } catch (err: any) {
-    setError(err.message || "Join failed")
-  } finally {
-    setSaving(false)
-  }
-}
+    e.preventDefault()
+    setBusy(true)
+    setError("")
+    try {
+      const res = await staffApi.join({ code, name, email, password })
+      if (res.token) setToken(res.token)
 
-  if (loading) {
+      // DECLARE role FIRST — then use it
+   const role = String(res.role || res.user?.role || info?.role || "").toUpperCase()
+   const type = String(
+     res.organization?.type || info?.businessType || info?.organization?.type || ""
+   ).toUpperCase()
+
+  if (type === "LIBRARY" && (role === "STAFF" || role === "WAITER")) {
+  window.location.href = "/library/attendance"
+   return
+  }
+  if (type === "LIBRARY") {
+    window.location.href = "/library"
+    return
+  }
+  if (role === "KITCHEN") {
+    window.location.href = "/kds"
+    return
+  }
+  if (role === "WAITER" || role === "STAFF") {
+    window.location.href = "/staff-home"
+    return
+  }
+  window.location.href = "/dashboard"
+    } catch (err: any) {
+      setError(err?.message || "Join failed")
+      setBusy(false)
+    }
+  }
+
+  if (phase === "loading") {
     return (
-      <div className="min-h-svh flex items-center justify-center text-semay-500 text-sm">
-        Loading invite...
+      <div className="min-h-svh flex flex-col items-center justify-center gap-2 p-6 text-sm text-stone-500">
+        <p>Checking invite…</p>
+        <p className="text-xs font-mono text-stone-400">{code || "no code"}</p>
       </div>
     )
   }
 
-  if (error && !info) {
+  if (phase === "error" && !info) {
     return (
-      <div className="min-h-svh flex flex-col items-center justify-center gap-4 p-6">
-        <p className="text-red-600 text-sm">{error}</p>
-        <Link to="/login" className="text-sm text-semay-900 underline">
-          Go to login
-        </Link>
+      <div className="min-h-svh flex items-center justify-center p-6">
+        <div className="max-w-sm text-center space-y-3">
+          <p className="text-sm text-rose-700">{error}</p>
+          <Link to="/" className="text-sm text-stone-900 underline">
+            Home
+          </Link>
+          <Link to="/login" className="block text-sm text-stone-500">
+            Sign in
+          </Link>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-svh bg-semay-50 flex items-center justify-center p-6">
-      <div className="w-full max-w-md bg-white border border-semay-200 rounded-2xl p-6 space-y-4">
+    <div className="min-h-svh flex items-center justify-center bg-stone-50 px-4 py-10">
+      <div className="w-full max-w-md bg-white border border-stone-200 rounded-2xl p-6 space-y-4">
         <div>
-          <h1 className="text-xl font-semibold text-semay-900">Join team</h1>
-          <p className="text-sm text-semay-500 mt-1">
-            {info?.organizationName} · role: <strong>{info?.role}</strong>
+          <h1 className="text-lg font-semibold text-stone-900">Join as staff</h1>
+          <p className="text-xs text-stone-500 mt-1">
+            Code <span className="font-mono">{code}</span>
+            {info?.organization?.name || info?.organizationName
+              ? ` · ${info.organization?.name || info.organizationName}`
+              : ""}
+            {info?.role ? ` · ${info.role}` : ""}
           </p>
         </div>
+
+        {error && (
+          <div className="text-sm text-rose-700 bg-rose-50 rounded-xl px-3 py-2">{error}</div>
+        )}
+
         <form onSubmit={submit} className="space-y-3">
           <input
             required
             placeholder="Your name"
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            className="w-full px-3.5 py-2.5 rounded-xl border border-semay-200 text-sm"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full px-3.5 py-2.5 rounded-xl border text-sm"
           />
           <input
             required
             type="email"
             placeholder="Email"
-            value={form.email}
-            onChange={(e) => setForm({ ...form, email: e.target.value })}
-            className="w-full px-3.5 py-2.5 rounded-xl border border-semay-200 text-sm"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full px-3.5 py-2.5 rounded-xl border text-sm"
           />
           <input
             required
             type="password"
             minLength={6}
             placeholder="Password (min 6)"
-            value={form.password}
-            onChange={(e) => setForm({ ...form, password: e.target.value })}
-            className="w-full px-3.5 py-2.5 rounded-xl border border-semay-200 text-sm"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="w-full px-3.5 py-2.5 rounded-xl border text-sm"
           />
-          {error && <p className="text-sm text-red-500">{error}</p>}
           <button
             type="submit"
-            disabled={saving}
-            className="w-full bg-semay-900 text-white py-3 rounded-xl text-sm font-medium disabled:opacity-60"
+            disabled={busy}
+            className="w-full bg-stone-900 text-white py-3 rounded-xl text-sm font-medium disabled:opacity-50"
           >
-            {saving ? "..." : "Join & start"}
+            {busy ? "..." : "Create staff account"}
           </button>
         </form>
-        <p className="text-xs text-semay-400 text-center">
-          Already have an account? <Link to="/login" className="underline">Login</Link>
-        </p>
       </div>
     </div>
   )

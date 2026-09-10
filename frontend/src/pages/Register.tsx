@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { Eye, EyeOff } from "lucide-react"
 import { useAuth } from "../lib/auth"
+import { libraryApi, setToken } from "../lib/api"
 
 const BUSINESS_TYPES = [
   { value: "CAFE", label: "Café", labelAm: "ካፌ" },
@@ -15,10 +16,26 @@ const BUSINESS_TYPES = [
   { value: "SALON", label: "Salon", labelAm: "ሳሎን" },
   { value: "SCHOOL", label: "School", labelAm: "ትምህርት ቤት" },
   { value: "UNIVERSITY", label: "University", labelAm: "ዩኒቨርሲቲ" },
+  { value: "LIBRARY", label: "Library", labelAm: "ቤተ መጻሕፍት" },
+  { value: "SUBCITY", label: "Subcity / Government", labelAm: "ክፍለ ከተማ" },
+   { value: "GARMENT", label: "Garment / Clothing", labelAm: "ልብስ ስፌት" },
   { value: "OTHER", label: "Other", labelAm: "ሌላ" },
+ 
 ]
 
 const VALID_TYPES = new Set(BUSINESS_TYPES.map((b) => b.value))
+
+function homeForType(type?: string) {
+  if (type === "SUBCITY") return "/library/network"
+  if (type === "LIBRARY") return "/library"
+  if (type === "RESTAURANT" || type === "CAFE") return "/dashboard"
+  if (type === "BAKERY") return "/dashboard"
+  if (type === "PHARMACY") return "/dashboard"
+  if (type === "GYM") return "/dashboard"
+  if (type === "HOTEL") return "/dashboard"
+  if (type === "GARMENT") return "/garment"
+  return "/dashboard"
+}
 
 export default function Register() {
   const { i18n } = useTranslation()
@@ -27,8 +44,13 @@ export default function Register() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
 
+  const networkCode = (params.get("network") || "").trim().toUpperCase()
   const typeFromUrl = params.get("type")?.toUpperCase() || ""
-  const initialType = VALID_TYPES.has(typeFromUrl) ? typeFromUrl : "CAFE"
+  const initialType = networkCode
+    ? "LIBRARY"
+    : VALID_TYPES.has(typeFromUrl)
+      ? typeFromUrl
+      : "CAFE"
 
   const [form, setForm] = useState({
     name: "",
@@ -47,10 +69,37 @@ export default function Register() {
     setError("")
     setLoading(true)
     try {
-      await register(form)
-      navigate("/dashboard")
+      const preferredLang = isAm ? "am" : "en"
+
+      // Subcity network invite → join under parent, not normal register
+      if (networkCode) {
+        const res = await libraryApi.joinNetworkLibrary({
+          name: form.name,
+          email: form.email,
+          password: form.password,
+          organizationName: form.organizationName,
+          networkCode,
+          preferredLang,
+        })
+        setToken(res.token)
+        // Full page load so AuthProvider picks up token
+        window.location.href = "/library"
+        return
+      }
+
+      const res = await register({
+        ...form,
+        businessType: form.businessType,
+        preferredLang,
+      })
+      navigate(homeForType(res.organization?.type), { replace: true })
     } catch (err: any) {
-      setError(err.message || "Registration failed")
+      const message =
+        err?.response?.data?.error?.[0]?.message ||
+        err?.response?.data?.error ||
+        err?.message ||
+        "Registration failed. Please try again."
+      setError(typeof message === "string" ? message : JSON.stringify(message))
     } finally {
       setLoading(false)
     }
@@ -65,7 +114,7 @@ export default function Register() {
               <span className="text-white font-semibold">ሰ</span>
             </div>
             <div className="text-left">
-              <div className="font-semibold text-xl">Semay</div>
+              <div className="font-semibold text-xl">Semaiy</div>
               <div className="text-xs text-semay-400">ሰማይ</div>
             </div>
           </Link>
@@ -81,6 +130,14 @@ export default function Register() {
           onSubmit={handleSubmit}
           className="bg-white border border-semay-200 rounded-2xl p-8 shadow-sm space-y-4"
         >
+          {networkCode && (
+            <p className="text-sm text-stone-600 bg-stone-100 rounded-xl px-3 py-2">
+              {isAm
+                ? "የክፍለ ከተማ ኔትወርክ — ቤተ መጻሕፍትዎ በሰሌዳቸው ላይ ይታያል።"
+                : "Joining a subcity network. Your library will appear on their board."}
+            </p>
+          )}
+
           <div>
             <label className="block text-sm font-medium text-semay-700 mb-1">
               {isAm ? "ሙሉ ስም" : "Your Name"}
@@ -146,9 +203,10 @@ export default function Register() {
               {isAm ? "ዓይነት" : "Type"}
             </label>
             <select
-              value={form.businessType}
+              value={networkCode ? "LIBRARY" : form.businessType}
+              disabled={!!networkCode}
               onChange={(e) => setForm({ ...form, businessType: e.target.value })}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-semay-200 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-semay-200 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:bg-semay-50"
             >
               {BUSINESS_TYPES.map((b) => (
                 <option key={b.value} value={b.value}>
@@ -156,6 +214,11 @@ export default function Register() {
                 </option>
               ))}
             </select>
+            {networkCode && (
+              <p className="text-[11px] text-semay-400 mt-1">
+                Locked to Library for this invite
+              </p>
+            )}
           </div>
 
           {error && (

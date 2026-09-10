@@ -6,8 +6,8 @@ interface AuthContextType {
   user: any | null
   organization: any | null
   loading: boolean
-  login: (email: string, password: string) => Promise<void>
-  register: (data: any) => Promise<void>
+  login: (email: string, password: string) => Promise<{ user: any; organization: any }>
+  register: (data: any) => Promise<{ user: any; organization: any }>
   logout: () => void
   isAuthenticated: boolean
 }
@@ -25,31 +25,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false)
       return
     }
+
     authApi
       .me()
       .then((data) => {
-        setUser(data)
-        setOrganization(data.organization)
-        if (data.preferredLang) i18n.changeLanguage(data.preferredLang)
+        const u = data.user ?? data
+        const org = data.organization ?? null
+        setUser(u)
+        setOrganization(org)
+        if (u?.preferredLang) i18n.changeLanguage(u.preferredLang)
       })
-      .catch(() => clearToken())
+      .catch(() => {
+        clearToken()
+        setUser(null)
+        setOrganization(null)
+      })
       .finally(() => setLoading(false))
   }, [])
 
   const login = async (email: string, password: string) => {
-    const data = await authApi.login(email, password)
+    const data = await authApi.login(email.trim().toLowerCase(), password)
+    if (!data?.token) throw new Error("No token returned")
     setToken(data.token)
     setUser(data.user)
     setOrganization(data.organization)
-    if (data.user.preferredLang) i18n.changeLanguage(data.user.preferredLang)
+    if (data.user?.preferredLang) i18n.changeLanguage(data.user.preferredLang)
+    return { user: data.user, organization: data.organization }
   }
 
   const register = async (formData: any) => {
-    const data = await authApi.register(formData)
+    const payload = {
+      ...formData,
+      email: String(formData.email || "").trim().toLowerCase(),
+    }
+    const data = await authApi.register(payload)
+    if (!data?.token) throw new Error("No token returned")
     setToken(data.token)
     setUser(data.user)
     setOrganization(data.organization)
-    if (data.user.preferredLang) i18n.changeLanguage(data.user.preferredLang)
+    if (data.user?.preferredLang) i18n.changeLanguage(data.user.preferredLang)
+    return { user: data.user, organization: data.organization }
   }
 
   const logout = () => {
@@ -61,7 +76,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, organization, loading, login, register, logout, isAuthenticated: !!user }}
+      value={{
+        user,
+        organization,
+        loading,
+        login,
+        register,
+        logout,
+        isAuthenticated: !!user,
+      }}
     >
       {children}
     </AuthContext.Provider>

@@ -1,18 +1,57 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { ArrowLeft, Plus, Minus, Send, Search, WifiOff } from "lucide-react"
 import { menuApi, ordersApi } from "../../lib/api"
 import { isOnline, queueOrder, flushQueue } from "../../lib/offline"
 import { cn } from "../../lib/utils"
+import { getBranchId } from "../../lib/branch"
+import { useAuth } from "../../lib/auth"
 
 const MENU_CACHE_KEY = "semay_menu_cache"
+
+const OTHER_BANKS = [
+  { id: "cbe", label: "CBE" },
+  { id: "awash", label: "Awash" },
+  { id: "dashen", label: "Dashen" },
+  { id: "boa", label: "Bank of Abyssinia" },
+  { id: "coop", label: "Coop" },
+  { id: "other_bank", label: "Other bank" },
+] as const
+
+type PayMain = "cash" | "telebirr" | "others"
+
+function readMenuCache(): any[] {
+  try {
+    const raw = localStorage.getItem(MENU_CACHE_KEY)
+    if (!raw) return []
+    const list = JSON.parse(raw)
+    return Array.isArray(list) ? list : []
+  } catch {
+    return []
+  }
+}
+
+function writeMenuCache(list: any[]) {
+  try {
+    localStorage.setItem(MENU_CACHE_KEY, JSON.stringify(list))
+  } catch {
+    /* ignore */
+  }
+}
 
 export default function POS() {
   const { i18n } = useTranslation()
   const isAm = i18n.language === "am"
+  const { user, organization } = useAuth()
+  const branchId = getBranchId()
+
   const [table, setTable] = useState("1")
-  const [menu, setMenu] = useState<any[]>([])
+  const [menu, setMenu] = useState<any[]>(() => {
+    const cached = readMenuCache()
+    const available = cached.filter((m: any) => m.available !== false)
+    return available.length ? available : cached
+  })
   const [cart, setCart] = useState<
     { id: string; name: string; price: number; qty: number }[]
   >([])
@@ -21,10 +60,17 @@ export default function POS() {
   const [sending, setSending] = useState(false)
   const [sent, setSent] = useState(false)
   const [error, setError] = useState("")
-  const [payMethod, setPayMethod] = useState<"cash" | "telebirr" | "card">("cash")
+  const [payMain, setPayMain] = useState<PayMain>("cash")
+  const [payBank, setPayBank] = useState<string>("cbe")
   const [online, setOnline] = useState(
     typeof navigator !== "undefined" ? navigator.onLine : true
   )
+  const [menuRefreshing, setMenuRefreshing] = useState(false)
+  const [openOrders, setOpenOrders] = useState<any[]>([])
+  /** null = brand-new order; string = add lines to that order id */
+  const [attachToId, setAttachToId] = useState<string | null>(null)
+
+  const paymentMethod = payMain === "others" ? payBank : payMain
 
   useEffect(() => {
     const on = () => setOnline(true)
@@ -37,33 +83,54 @@ export default function POS() {
     }
   }, [])
 
-  useEffect(() => {
+  const refreshMenu = useCallback(() => {
+    if (!isOnline()) return
+    setMenuRefreshing(true)
     menuApi
-      .list(false)
+      .list(false, branchId || undefined)
       .then((items) => {
         const list = items || []
-        try {
-          localStorage.setItem(MENU_CACHE_KEY, JSON.stringify(list))
-        } catch {}
+        writeMenuCache(list)
         const available = list.filter((m: any) => m.available !== false)
         setMenu(available.length ? available : list)
       })
-      .catch(() => {
-        try {
-          const cached = JSON.parse(localStorage.getItem(MENU_CACHE_KEY) || "[]")
-          setMenu(Array.isArray(cached) ? cached : [])
-        } catch {
-          setMenu([])
-        }
+      .catch(() => {})
+      .finally(() => setMenuRefreshing(false))
+  }, [branchId])
+
+  useEffect(() => {
+    refreshMenu()
+  }, [refreshMenu])
+
+  // Load open orders for this table
+  useEffect(() => {
+    const t = String(table || "").trim()
+    if (!t || !isOnline()) {
+      setOpenOrders([])
+      setAttachToId(null)
+      return
+    }
+    ordersApi
+      .open(t)
+      .then((list) => {
+        setOpenOrders(Array.isArray(list) ? list : [])
+        setAttachToId(null)
       })
-  }, [])
+      .catch(() => {
+        setOpenOrders([])
+        setAttachToId(null)
+      })
+  }, [table, online, sent])
 
   useEffect(() => {
     if (!online) return
-    flushQueue((p) => ordersApi.create(p)).catch(() => {})
+    const t = window.setTimeout(() => {
+      flushQueue((p) => ordersApi.create(p)).catch(() => {})
+    }, 400)
+    return () => clearTimeout(t)
   }, [online])
 
-  const categories = ["All", ...Array.from(new Set(menu.map((m) => m.category)))]
+  const categories = ["All", ...Array.from(new Set(menu.map((m) => m.category).filter(Boolean)))]
   const emptyMenu = menu.length === 0
 
   const filtered = menu.filter((m) => {
@@ -84,7 +151,7 @@ export default function POS() {
       return [
         ...prev,
         {
-          id: item.id, // menu item id — used as menuItemId on send
+          id: item.id,
           name: isAm && item.nameAm ? item.nameAm : item.name,
           price: Number(item.price),
           qty: 1,
@@ -103,41 +170,91 @@ export default function POS() {
 
   const total = cart.reduce((s, c) => s + c.price * c.qty, 0)
 
+  const homePath =
+    user?.role === "WAITER" || user?.role === "STAFF" || user?.role === "KITCHEN"
+      ? "/staff-home"
+      : "/dashboard"
+
+  const cartLines = () =>
+    cart.map((c) => ({
+      menuItemId: c.id,
+      name: c.name,
+      quantity: c.qty,
+      price: c.price,
+    }))
+
   const send = async () => {
-    if (!cart.length) return
+    if (!cart.length || sending) return
     setSending(true)
     setError("")
 
-    // menuItemId required so backend can deduct stock recipes
-    const payload = {
-      tableNumber: table,
-      paymentMethod: payMethod,
-      items: cart.map((c) => ({
-        menuItemId: c.id,
-        name: c.name,
-        quantity: c.qty,
-        price: c.price,
-      })),
+    // Adding to existing order needs network
+    if (attachToId) {
+      if (!isOnline() || !navigator.onLine) {
+        setError(
+          isAm
+            ? "ኦፍላይን ላይ ነባር ትዕዛዝ ላይ መጨመር አይቻልም — አዲስ ትዕዛዝ ይፍጠሩ"
+            : "Cannot add to existing order offline — choose New order"
+        )
+        setSending(false)
+        return
+      }
+      try {
+        await ordersApi.addItems(attachToId, cartLines())
+        setCart([])
+        setSent(true)
+        setTimeout(() => setSent(false), 2000)
+        ordersApi.open(String(table || "1")).then(setOpenOrders).catch(() => {})
+      } catch (err: any) {
+        setError(err?.message || "Failed to add items")
+      } finally {
+        setSending(false)
+      }
+      return
+    }
+
+    const payload: any = {
+      tableNumber: String(table || "1").trim() || "1",
+      paymentMethod,
+      branchId: branchId || undefined,
+      items: cartLines(),
+    }
+
+    if (!isOnline() || !navigator.onLine) {
+      try {
+        queueOrder(payload)
+        setCart([])
+        setSent(true)
+        setTimeout(() => setSent(false), 2500)
+      } catch (e: any) {
+        setError(e?.message || "Could not save offline")
+      } finally {
+        setSending(false)
+      }
+      return
     }
 
     try {
-      if (!isOnline()) {
-        queueOrder(payload)
-        setSent(true)
-        setCart([])
-        setTimeout(() => setSent(false), 2500)
-        return
-      }
-
       await ordersApi.create(payload)
-      await flushQueue((p) => ordersApi.create(p))
+      setCart([])
       setSent(true)
-      setCart([])
       setTimeout(() => setSent(false), 2000)
+      flushQueue((p) => ordersApi.create(p)).catch(() => {})
+      ordersApi.open(String(table || "1")).then(setOpenOrders).catch(() => {})
     } catch (err: any) {
-      queueOrder(payload)
-      setError(err.message || "Saved offline — will sync later")
-      setCart([])
+      try {
+        queueOrder(payload)
+        setCart([])
+        setError(
+          isAm
+            ? "ኔትወርክ አልተሳካም — ኦፍላይን ተቀምጧል"
+            : "Network failed — saved offline"
+        )
+        setSent(true)
+        setTimeout(() => setSent(false), 2500)
+      } catch {
+        setError(err?.message || "Failed to send")
+      }
     } finally {
       setSending(false)
     }
@@ -146,20 +263,26 @@ export default function POS() {
   return (
     <div className="min-h-svh bg-semay-50 flex flex-col">
       <header className="bg-white border-b border-semay-200 px-4 h-14 flex items-center justify-between sticky top-0 z-20">
-        <div className="flex items-center gap-3">
-          <Link to="/dashboard" className="p-2 -ml-2 rounded-lg hover:bg-semay-100">
+        <div className="flex items-center gap-3 min-w-0">
+          <Link to={homePath} className="p-2 -ml-2 rounded-lg hover:bg-semay-100 shrink-0">
             <ArrowLeft className="w-5 h-5 text-semay-600" />
           </Link>
-          <div>
-            <div className="text-sm font-semibold text-semay-900">POS</div>
-            <div className="text-xs text-semay-400">
-              {isAm ? "የጠረጴዛ አገልግሎት" : "Table service"}
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-semay-900 flex items-center gap-2">
+              POS
+              {menuRefreshing && (
+                <span className="text-[10px] font-normal text-semay-400">…</span>
+              )}
+            </div>
+            <div className="text-xs text-semay-400 truncate max-w-[160px]">
+              {organization?.name || (isAm ? "የጠረጴዛ አገልግሎት" : "Table service")}
+              {user?.name ? ` · ${user.name}` : ""}
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           {!online && (
-            <span className="flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded-full">
+            <span className="flex items-center gap-1 text-xs text-amber-700 bg-amber-50 px-2 py-1 rounded-full">
               <WifiOff className="w-3 h-3" />
               Offline
             </span>
@@ -206,16 +329,8 @@ export default function POS() {
             {emptyMenu ? (
               <div className="col-span-full flex flex-col items-center justify-center py-16 px-6 text-center">
                 <p className="text-semay-600 text-sm mb-3">
-                  {isAm
-                    ? "ሜኑ ባዶ ነው። መጀመሪያ እቃዎችን ይጨምሩ።"
-                    : "Menu is empty. Add items first."}
+                  {isAm ? "ሜኑ ባዶ ነው።" : "Menu empty or no offline cache yet."}
                 </p>
-                <Link
-                  to="/menu"
-                  className="text-sm font-medium bg-semay-900 text-white px-4 py-2 rounded-full"
-                >
-                  {isAm ? "ወደ ሜኑ" : "Go to Menu"}
-                </Link>
               </div>
             ) : (
               filtered.map((item) => (
@@ -223,15 +338,16 @@ export default function POS() {
                   key={item.id}
                   type="button"
                   onClick={() => add(item)}
-                  className="bg-white border border-semay-200 rounded-xl p-3 text-left hover:border-semay-400 transition shadow-sm"
+                  className="bg-white border border-semay-200 rounded-xl p-3 text-left hover:border-semay-400 active:scale-[0.98] transition shadow-sm"
                 >
-                  {item.imageUrl && (
+                  {item.imageUrl ? (
                     <img
                       src={item.imageUrl}
                       alt=""
                       className="w-full h-16 object-cover rounded-lg mb-2"
+                      loading="lazy"
                     />
-                  )}
+                  ) : null}
                   <div className="text-sm font-medium text-semay-900 line-clamp-2">
                     {isAm && item.nameAm ? item.nameAm : item.name}
                   </div>
@@ -242,7 +358,7 @@ export default function POS() {
           </div>
         </div>
 
-        <div className="w-full md:w-80 bg-white flex flex-col border-t md:border-t-0 max-h-[45vh] md:max-h-none">
+        <div className="w-full md:w-80 bg-white flex flex-col border-t md:border-t-0 max-h-[50vh] md:max-h-none">
           <div className="p-4 border-b border-semay-100">
             <div className="font-semibold text-semay-900">
               {isAm ? "ትዕዛዝ" : "Order"} · {table}
@@ -251,6 +367,45 @@ export default function POS() {
               {cart.length} {isAm ? "እቃዎች" : "items"}
             </div>
           </div>
+
+          {/* Same table — new vs add */}
+          {openOrders.length > 0 && (
+            <div className="px-3 pt-2 space-y-1 border-b border-semay-50 pb-2">
+              <p className="text-[11px] text-semay-500">
+                {isAm ? "ይህ ጠረጴዛ ክፍት ትዕዛዝ አለው" : "Open orders on this table"}
+              </p>
+              <button
+                type="button"
+                onClick={() => setAttachToId(null)}
+                className={cn(
+                  "text-xs w-full text-left px-2.5 py-1.5 rounded-lg border font-medium",
+                  !attachToId
+                    ? "bg-semay-900 text-white border-semay-900"
+                    : "border-semay-200 text-semay-700"
+                )}
+              >
+                {isAm ? "አዲስ ትዕዛዝ" : "New order"}
+              </button>
+              {openOrders.map((o) => (
+                <button
+                  key={o.id}
+                  type="button"
+                  onClick={() => setAttachToId(o.id)}
+                  className={cn(
+                    "text-xs w-full text-left px-2.5 py-1.5 rounded-lg border",
+                    attachToId === o.id
+                      ? "bg-emerald-700 text-white border-emerald-700"
+                      : "border-semay-200 text-semay-700"
+                  )}
+                >
+                  {isAm ? "ጨምር በ" : "Add to"}{" "}
+                  <span className="font-mono">{o.receiptCode || String(o.id).slice(-6)}</span>
+                  {" · "}
+                  {Number(o.total).toLocaleString()} ETB · {o.status}
+                </button>
+              ))}
+            </div>
+          )}
 
           <div className="flex-1 overflow-y-auto p-4 space-y-2 min-h-0">
             {cart.length === 0 ? (
@@ -289,42 +444,69 @@ export default function POS() {
           </div>
 
           <div className="p-4 border-t border-semay-100 space-y-2 sticky bottom-0 bg-white shadow-[0_-4px_12px_rgba(0,0,0,0.04)]">
-            {error && <p className="text-xs text-red-500">{error}</p>}
+            {error && <p className="text-xs text-amber-700">{error}</p>}
             {sent && (
               <p className="text-xs text-green-600">
-                {isAm
-                  ? online
-                    ? "ወደ ኩሽና ተልኳል"
-                    : "ኦፍላይን ተቀምጧል — ሲገናኝ ይላካል"
-                  : online
-                    ? "Sent to kitchen"
-                    : "Saved offline — will sync when online"}
+                {attachToId
+                  ? isAm
+                    ? "በትዕዛዝ ላይ ተጨምሯል · ኩሽና"
+                    : "Added to order · kitchen notified"
+                  : isAm
+                    ? online
+                      ? "ወደ ኩሽና ተልኳል"
+                      : "ኦፍላይን ተቀምጧል"
+                    : online
+                      ? "Sent to kitchen"
+                      : "Saved offline"}
               </p>
             )}
 
-            <div className="flex gap-1">
-              {(
-                [
-                  { id: "cash" as const, label: isAm ? "ጥሬ" : "Cash" },
-                  { id: "telebirr" as const, label: "Telebirr" },
-                  { id: "card" as const, label: isAm ? "ካርድ" : "Card" },
-                ] as const
-              ).map((m) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  onClick={() => setPayMethod(m.id)}
-                  className={cn(
-                    "flex-1 text-xs py-1.5 rounded-lg border font-medium",
-                    payMethod === m.id
-                      ? "bg-semay-900 text-white border-semay-900"
-                      : "border-semay-200 text-semay-600"
-                  )}
-                >
-                  {m.label}
-                </button>
-              ))}
-            </div>
+            {!attachToId && (
+              <>
+                <div className="flex gap-1">
+                  {(
+                    [
+                      { id: "cash" as const, label: isAm ? "ጥሬ" : "Cash" },
+                      { id: "telebirr" as const, label: "Telebirr" },
+                      { id: "others" as const, label: isAm ? "ሌላ" : "Others" },
+                    ] as const
+                  ).map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setPayMain(m.id)}
+                      className={cn(
+                        "flex-1 text-xs py-1.5 rounded-lg border font-medium",
+                        payMain === m.id
+                          ? "bg-semay-900 text-white border-semay-900"
+                          : "border-semay-200 text-semay-600"
+                      )}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+                {payMain === "others" && (
+                  <div className="flex flex-wrap gap-1">
+                    {OTHER_BANKS.map((b) => (
+                      <button
+                        key={b.id}
+                        type="button"
+                        onClick={() => setPayBank(b.id)}
+                        className={cn(
+                          "text-[10px] px-2 py-1 rounded-md border font-medium",
+                          payBank === b.id
+                            ? "bg-sky-700 text-white border-sky-700"
+                            : "border-semay-200 text-semay-600"
+                        )}
+                      >
+                        {b.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
 
             <div className="flex justify-between text-sm font-semibold">
               <span>Total</span>
@@ -338,7 +520,15 @@ export default function POS() {
               className="w-full flex items-center justify-center gap-2 bg-semay-900 text-white py-3 rounded-xl text-sm font-medium disabled:opacity-40"
             >
               <Send className="w-4 h-4" />
-              {sending ? "..." : isAm ? "ወደ ኩሽና ላክ" : "Send to Kitchen"}
+              {sending
+                ? "..."
+                : attachToId
+                  ? isAm
+                    ? "በትዕዛዝ ላይ ጨምር"
+                    : "Add to order"
+                  : isAm
+                    ? "ወደ ኩሽና ላክ"
+                    : "Send to Kitchen"}
             </button>
           </div>
         </div>

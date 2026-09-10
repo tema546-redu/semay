@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { ArrowLeft, Copy, UserPlus, CalendarDays } from "lucide-react"
-import { staffApi } from "../../lib/api"
+import { staffApi, branchesApi } from "../../lib/api"
 import { cn } from "../../lib/utils"
 
 const STATUSES = [
@@ -16,12 +16,16 @@ const STATUSES = [
 export default function StaffPage() {
   const { i18n } = useTranslation()
   const isAm = i18n.language === "am"
+
   const [users, setUsers] = useState<any[]>([])
   const [invites, setInvites] = useState<any[]>([])
   const [role, setRole] = useState("WAITER")
   const [loading, setLoading] = useState(true)
   const [lastLink, setLastLink] = useState("")
   const [msg, setMsg] = useState("")
+
+  const [branchId, setBranchIdState] = useState("")
+  const [branches, setBranches] = useState<any[]>([])
 
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
@@ -45,8 +49,8 @@ export default function StaffPage() {
 
   const loadAttendance = () =>
     staffApi
-      .attendance(year, month)
-      .then((d) => {
+      .attendance?.(year, month)
+      ?.then((d: any) => {
         setRecords(d.records || [])
         if (d.users?.length && !selectedUserId) {
           setSelectedUserId(d.users[0].id)
@@ -56,6 +60,11 @@ export default function StaffPage() {
 
   useEffect(() => {
     load()
+    branchesApi
+      .list()
+      .then(setBranches)
+      .catch(() => setBranches([]))
+    branchesApi.ensureMain?.().catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -65,10 +74,15 @@ export default function StaffPage() {
   const createInvite = async () => {
     setMsg("")
     try {
-      const inv = await staffApi.createInvite(role)
-      const link = `${window.location.origin}/join/${inv.code}`
+      const inv = await staffApi.createInvite(role, branchId || undefined)
+      const code = inv.code
+      const link = `${window.location.origin}/join/${code}${
+        inv.branchId || branchId
+          ? `?branch=${inv.branchId || branchId}`
+          : ""
+      }`
       setLastLink(link)
-      setMsg(isAm ? "ግብዣ ተፈጥሯል" : "Invite created")
+      setMsg(isAm ? "ግብዣ ተፈጥሯል" : "Invite created — copy the link")
       load()
     } catch (e: any) {
       setMsg(e.message || "Failed")
@@ -83,7 +97,6 @@ export default function StaffPage() {
 
   const daysInMonth = useMemo(() => new Date(year, month, 0).getDate(), [year, month])
   const firstWeekday = useMemo(() => {
-    // Monday-first: 0=Mon … 6=Sun
     const js = new Date(year, month - 1, 1).getDay()
     return js === 0 ? 6 : js - 1
   }, [year, month])
@@ -95,7 +108,7 @@ export default function StaffPage() {
   }
 
   const mark = async (day: number, status: string) => {
-    if (!selectedUserId) return
+    if (!selectedUserId || !staffApi.markAttendance) return
     const date = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`
     setAttBusy(true)
     try {
@@ -121,10 +134,9 @@ export default function StaffPage() {
     } else setMonth((m) => m + 1)
   }
 
-  const monthName = new Date(year, month - 1, 1).toLocaleString(
-    isAm ? "en" : undefined,
-    { month: "long" }
-  )
+  const monthName = new Date(year, month - 1, 1).toLocaleString(undefined, {
+    month: "long",
+  })
 
   const counts = useMemo(() => {
     const map: Record<string, number> = {}
@@ -153,8 +165,8 @@ export default function StaffPage() {
           </h2>
           <p className="text-sm text-semay-500">
             {isAm
-              ? "Waiter ወይም Kitchen ሚና ይምረጡ። ሊንኩን ለሰራተኛው ይላኩ።"
-              : "Choose Waiter or Kitchen. Send the link to your staff."}
+              ? "ሚና እና ቅርንጫፍ ይምረጡ። ሊንኩን ለሰራተኛው ይላኩ።"
+              : "Choose role and branch. Send the link to your staff."}
           </p>
           <div className="flex flex-wrap gap-2 items-center">
             <select
@@ -166,6 +178,18 @@ export default function StaffPage() {
               <option value="KITCHEN">Kitchen (KDS)</option>
               <option value="MANAGER">Manager</option>
               <option value="STAFF">Staff</option>
+            </select>
+            <select
+              value={branchId}
+              onChange={(e) => setBranchIdState(e.target.value)}
+              className="px-3 py-2 rounded-xl border border-semay-200 text-sm min-w-[140px]"
+            >
+              <option value="">{isAm ? "ዋና / ሁሉም" : "Main / any"}</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
             </select>
             <button
               type="button"
@@ -200,16 +224,38 @@ export default function StaffPage() {
           ) : (
             <div className="bg-white border border-semay-200 rounded-2xl divide-y divide-semay-100 shadow-sm">
               {users.map((u) => (
-                <div key={u.id} className="px-4 py-3 flex justify-between items-center">
-                  <div>
-                    <div className="text-sm font-medium text-semay-900">{u.name}</div>
-                    <div className="text-xs text-semay-400">{u.email}</div>
-                  </div>
-                  <span className="text-xs font-medium bg-semay-100 text-semay-700 px-2 py-1 rounded-full">
-                    {u.role}
-                  </span>
-                </div>
-              ))}
+  <div key={u.id} className="px-4 py-3 flex justify-between items-center gap-2">
+    <div>
+      <div className="text-sm font-medium text-semay-900">{u.name}</div>
+      <div className="text-xs text-semay-400">{u.email}</div>
+      {u.branch?.name && (
+        <div className="text-[11px] text-semay-400">{u.branch.name}</div>
+      )}
+    </div>
+    <div className="flex items-center gap-2 shrink-0">
+      <span className="text-xs font-medium bg-semay-100 text-semay-700 px-2 py-1 rounded-full">
+        {u.role}
+      </span>
+      {u.role !== "OWNER" && (
+        <button
+          type="button"
+          className="text-[11px] text-rose-600 px-2 py-1"
+          onClick={async () => {
+            if (!confirm(`Remove ${u.name}?`)) return
+            try {
+              await staffApi.remove(u.id)
+              load()
+            } catch (e: any) {
+              setMsg(e.message || "Failed")
+            }
+          }}
+        >
+          Remove
+        </button>
+      )}
+    </div>
+  </div>
+))}
             </div>
           )}
         </div>
@@ -221,16 +267,19 @@ export default function StaffPage() {
             </h3>
             <div className="bg-white border border-semay-200 rounded-2xl divide-y divide-semay-100">
               {invites.map((inv) => (
-                <div key={inv.id} className="px-4 py-3 flex justify-between text-sm">
+                <div key={inv.id} className="px-4 py-3 flex justify-between text-sm gap-2">
                   <span className="font-mono">{inv.code}</span>
-                  <span className="text-semay-500">{inv.role}</span>
+                  <span className="text-semay-500">
+                    {inv.role}
+                    {inv.branch?.name ? ` · ${inv.branch.name}` : ""}
+                  </span>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* Attendance calendar — owner/manager API already restricted */}
+        {/* Attendance */}
         <div className="bg-white border border-semay-200 rounded-2xl p-5 space-y-4 shadow-sm">
           <div className="flex items-center justify-between gap-2">
             <h2 className="font-semibold text-semay-900 flex items-center gap-2">
@@ -310,7 +359,7 @@ export default function StaffPage() {
             })}
           </div>
           <p className="text-[11px] text-semay-400">
-            Tap a day to cycle: Present → Late → Half → Absent → Off. Owner/Manager only.
+            Tap a day: Present → Late → Half → Absent → Off. Owner/Manager only.
           </p>
         </div>
       </div>

@@ -11,10 +11,16 @@ router.get("/", async (req, res) => {
   const organizationId = req.user!.organizationId!
   const availableOnly =
     req.query.available === "true" || req.query.available === "1"
+  const branchId =
+    (req.query.branchId as string) ||
+    (req.user as any)?.branchId ||
+    undefined
+
   const items = await prisma.menuItem.findMany({
     where: {
       organizationId,
       ...(availableOnly ? { available: true } : {}),
+      ...(branchId ? { branchId } : {}),
     },
     orderBy: [{ category: "asc" }, { name: "asc" }],
   })
@@ -32,8 +38,25 @@ router.post("/", requireRole(Role.OWNER, Role.MANAGER), async (req, res) => {
         description: z.string().optional(),
         imageUrl: z.string().optional().nullable(),
         available: z.boolean().default(true),
+        branchId: z.string().optional().nullable(),
       })
       .parse(req.body)
+
+    const organizationId = req.user!.organizationId!
+    let branchId = data.branchId || (req.user as any)?.branchId || null
+
+    if (!branchId) {
+      let main = await prisma.branch.findFirst({
+        where: { organizationId },
+        orderBy: { createdAt: "asc" },
+      })
+      if (!main) {
+        main = await prisma.branch.create({
+          data: { name: "Main", organizationId },
+        })
+      }
+      branchId = main.id
+    }
 
     const item = await prisma.menuItem.create({
       data: {
@@ -44,7 +67,8 @@ router.post("/", requireRole(Role.OWNER, Role.MANAGER), async (req, res) => {
         description: data.description,
         imageUrl: data.imageUrl || null,
         available: data.available,
-        organizationId: req.user!.organizationId!,
+        organizationId,
+        branchId,
       },
     })
     res.status(201).json(item)
@@ -55,7 +79,6 @@ router.post("/", requireRole(Role.OWNER, Role.MANAGER), async (req, res) => {
   }
 })
 
-/** Full edit: name, price, photo, category, available */
 router.patch("/:id", requireRole(Role.OWNER, Role.MANAGER), async (req, res) => {
   try {
     const id = String(req.params.id)
@@ -69,6 +92,7 @@ router.patch("/:id", requireRole(Role.OWNER, Role.MANAGER), async (req, res) => 
         description: z.string().optional().nullable(),
         imageUrl: z.string().nullable().optional(),
         available: z.boolean().optional(),
+        branchId: z.string().optional().nullable(),
       })
       .parse(req.body)
 
@@ -102,7 +126,7 @@ router.patch(
         data: { available },
       })
       res.json(updated)
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to update" })
     }
   }
@@ -128,7 +152,7 @@ router.patch(
         },
       })
       res.json(updated)
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed" })
     }
   }

@@ -135,10 +135,22 @@ export default function RestaurantDashboard() {
 
   const hours = data?.hourlyChart || []
   const maxHourSales = Math.max(1, ...hours.map((d: any) => Number(d.sales) || 0))
-  const health = data?.healthScore ?? 0
-  const healthLabel = health >= 80 ? "Strong" : health >= 50 ? "OK" : "Needs attention"
-  const healthColor =
-    health >= 80 ? "text-emerald-600" : health >= 50 ? "text-amber-600" : "text-red-500"
+    const health = data?.healthScore != null ? Number(data.healthScore) : 0
+  const noActivity = !(data?.today?.orders > 0)
+  const healthLabel = noActivity
+    ? "No activity"
+    : health >= 80
+      ? "Strong"
+      : health >= 50
+        ? "OK"
+        : "Needs attention"
+  const healthColor = noActivity
+    ? "text-semay-400"
+    : health >= 80
+      ? "text-emerald-600"
+      : health >= 50
+        ? "text-amber-600"
+        : "text-red-500"
 
   const stockList = data?.stockOverview || []
 
@@ -163,7 +175,7 @@ export default function RestaurantDashboard() {
     { to: "/restaurant/settings", icon: <Settings className="w-4 h-4" />, label: "Settings" },
     { to: "/billing", icon: <CreditCard className="w-4 h-4" />, label: "Billing" },
     { to: "/ai", icon: <Sparkles className="w-4 h-4" />, label: "Semay AI" },
-    { to: "/help", icon: <HelpCircle className="w-4 h-4" />, label: isAm ? "እገዛ" : "Help" },
+    { to: "/help", icon: <HelpCircle className="w-4 h-4" />, label: isAm ? "እገዛ" : "Help" } ,
     { to: "/profile", icon: <UserCircle className="w-4 h-4" />, label: isAm ? "መገለጫ" : "Profile" },
   ]
 

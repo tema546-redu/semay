@@ -10,6 +10,7 @@ export default function Profile() {
   const [avatarUrl, setAvatarUrl] = useState("")
   const [msg, setMsg] = useState("")
   const [saving, setSaving] = useState(false)
+  const [showDanger, setShowDanger] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
@@ -46,8 +47,9 @@ export default function Profile() {
         name: name.trim(),
         phone: phone.trim() || null,
         avatarUrl: avatarUrl || null,
+        email: email.trim().toLowerCase(),
       })
-      setMsg("Saved")
+      setMsg("Profile saved")
     } catch (err: any) {
       setMsg(err.message || "Failed")
     } finally {
@@ -67,13 +69,13 @@ export default function Profile() {
   }
 
   const deleteAccount = async () => {
-    const ok = confirm(
-      "Delete your account permanently?\n\nYou will be logged out. This cannot be undone."
-    )
-    if (!ok) return
-    const ok2 = confirm("Are you sure? Type OK in the next step mentally — last chance.")
-    if (!ok2) return
-
+    if (
+      !confirm(
+        "Delete your login permanently?\n\nBusiness data may remain for the organization. This cannot be undone."
+      )
+    ) {
+      return
+    }
     setDeleting(true)
     setMsg("")
     try {
@@ -88,90 +90,126 @@ export default function Profile() {
   }
 
   return (
-    <div className="min-h-svh bg-slate-50">
-      <header className="bg-white border-b h-14 px-4 flex items-center gap-3 sticky top-0">
-        <Link to="/dashboard" className="p-2 -ml-2 rounded-lg hover:bg-slate-100">
-          <ArrowLeft className="w-5 h-5 text-slate-600" />
+    <div className="min-h-svh bg-stone-50">
+      <header className="bg-white border-b border-stone-200 h-14 px-4 flex items-center gap-3 sticky top-0 z-10">
+        <Link to="/dashboard" className="p-2 -ml-2 rounded-lg hover:bg-stone-100">
+          <ArrowLeft className="w-5 h-5 text-stone-600" />
         </Link>
-        <h1 className="font-semibold text-slate-900 text-sm">Profile</h1>
+        <h1 className="font-semibold text-stone-900 text-sm">Your profile</h1>
       </header>
 
-      <form onSubmit={save} className="max-w-md mx-auto p-6 space-y-4">
-        <div className="flex items-center gap-4">
-          <div className="w-16 h-16 rounded-full bg-slate-200 overflow-hidden shrink-0">
-            {avatarUrl ? (
-              <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-slate-500 text-xl font-medium">
-                {(name || "?")[0]}
-              </div>
-            )}
+      <form onSubmit={save} className="max-w-md mx-auto p-5 space-y-5">
+        <p className="text-xs text-stone-500 leading-relaxed">
+          This is your personal login. Restaurant phone, address and TIN are under{" "}
+          <Link to="/settings" className="underline text-stone-800">
+            Settings
+          </Link>
+          .
+        </p>
+
+        <div className="bg-white border border-stone-200 rounded-2xl p-5 space-y-4 shadow-sm">
+          <div className="flex items-center gap-4">
+            <div className="w-16 h-16 rounded-full bg-stone-100 overflow-hidden shrink-0 border border-stone-200">
+              {avatarUrl ? (
+                <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-stone-500 text-xl font-medium">
+                  {(name || "?")[0]}
+                </div>
+              )}
+            </div>
+            <div className="space-y-1.5 min-w-0">
+              <input type="file" accept="image/*" onChange={onPhoto} className="text-xs w-full" />
+              {avatarUrl ? (
+                <button
+                  type="button"
+                  onClick={removePhoto}
+                  className="text-xs text-stone-500 hover:text-stone-800"
+                >
+                  Remove photo
+                </button>
+              ) : null}
+            </div>
           </div>
 
-          <div className="space-y-2">
-            <input type="file" accept="image/*" onChange={onPhoto} className="text-sm" />
-            {avatarUrl && (
-              <button
-                type="button"
-                onClick={removePhoto}
-                className="block text-sm text-red-600 hover:underline"
-              >
-                Remove photo
-              </button>
-            )}
+          <div>
+            <label className="block text-xs font-medium text-stone-500 mb-1">Name</label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 text-sm"
+              required
+            />
           </div>
-        </div>
 
-        <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">Name</label>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm"
-          />
-        </div>
+          <div>
+            <label className="block text-xs font-medium text-stone-500 mb-1">Personal phone</label>
+            <input
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 text-sm"
+              placeholder="Optional"
+            />
+          </div>
 
-        <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">Phone</label>
-          <input
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm"
-          />
-        </div>
+          <div>
+            <label className="block text-xs font-medium text-stone-500 mb-1">Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 text-sm"
+              required
+            />
+            <p className="text-[11px] text-stone-400 mt-1">Used to sign in. Must be unique.</p>
+          </div>
 
-        <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">Email</label>
-          <input
-            value={email}
-            disabled
-            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-100 text-sm bg-slate-50 text-slate-500"
-          />
-        </div>
+          {msg ? <p className="text-sm text-stone-600">{msg}</p> : null}
 
-        {msg && <p className="text-sm text-slate-600">{msg}</p>}
-
-        <button
-          type="submit"
-          disabled={saving}
-          className="w-full bg-slate-900 text-white py-3 rounded-xl text-sm font-medium disabled:opacity-50"
-        >
-          {saving ? "..." : "Save profile"}
-        </button>
-
-        <div className="pt-8 border-t border-slate-200 mt-6">
-          <p className="text-xs text-slate-500 mb-3">
-            Delete permanently removes your login. Contact support if you need business data
-            recovered.
-          </p>
           <button
-            type="button"
-            disabled={deleting}
-            onClick={deleteAccount}
-            className="w-full border border-rose-200 text-rose-700 py-3 rounded-xl text-sm font-medium disabled:opacity-50"
+            type="submit"
+            disabled={saving}
+            className="w-full bg-stone-900 text-white py-3 rounded-xl text-sm font-medium disabled:opacity-50"
           >
-            {deleting ? "Deleting..." : "Delete my account"}
+            {saving ? "..." : "Save profile"}
           </button>
+        </div>
+
+        {/* Quiet account section — not a loud red box */}
+        <div className="pt-2">
+          {!showDanger ? (
+            <button
+              type="button"
+              onClick={() => setShowDanger(true)}
+              className="text-xs text-stone-400 hover:text-stone-600 underline-offset-2 hover:underline"
+            >
+              Account options
+            </button>
+          ) : (
+            <div className="rounded-xl border border-stone-200 bg-white p-4 space-y-3">
+              <p className="text-xs text-stone-500 leading-relaxed">
+                Closing your login removes this user. For restaurant data or billing help, contact
+                Semay support first.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowDanger(false)}
+                  className="text-xs px-3 py-2 rounded-lg border border-stone-200 text-stone-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={deleting}
+                  onClick={deleteAccount}
+                  className="text-xs px-3 py-2 rounded-lg text-stone-500 hover:text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                >
+                  {deleting ? "Removing…" : "Delete my login"}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </form>
     </div>

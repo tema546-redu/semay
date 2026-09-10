@@ -5,6 +5,177 @@ import { authenticate, requireOrganization, requireRole } from "../middleware/au
 import { OrderStatus, Role } from "@prisma/client"
 
 const router = Router()
+
+function makeReceiptCode() {
+  return ("R" + Math.random().toString(36).slice(2, 8)).toUpperCase()
+}
+
+function makeReceiptToken() {
+  return (
+    Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)
+  ).toUpperCase()
+}
+
+function normalizeReceiptCode(raw: string) {
+  let code = String(raw || "").trim().toUpperCase()
+  // QR payload: SMAY|orderId|token
+  if (code.startsWith("SMAY|")) {
+    const parts = code.split("|")
+    return { orderId: parts[1] || "", token: parts[2] || "", code: "" }
+  }
+  code = code.replace(/^R-?/, "R")
+  if (!code.startsWith("R") && code.length >= 4) code = "R" + code
+  return { orderId: "", token: "", code }
+}
+
+// ========== PUBLIC (no login) — must be BEFORE auth middleware ==========
+
+router.get("/public/:orgId/menu", async (req, res) => {
+  try {
+    const orgId = String(req.params.orgId)
+    const org = await prisma.organization.findFirst({
+      where: { id: orgId, type: { in: ["RESTAURANT", "CAFE"] as any } },
+    })
+    if (!org) return res.status(404).json({ error: "Not found" })
+
+    const items = await prisma.menuItem.findMany({
+      where: { organizationId: orgId, available: true },
+      orderBy: [{ category: "asc" }, { name: "asc" }],
+    })
+
+    res.json({
+      organization: {
+        id: org.id,
+        name: org.name,
+        photoUrl: (org as any).photoUrl || null,
+        openTime: org.openTime,
+        closeTime: org.closeTime,
+      },
+      items,
+    })
+  } catch (e) {
+    console.error(e)
+    res.status(500).json({ error: "Failed" })
+  }
+})
+
+router.post("/public/:orgId/order", async (req, res) => {
+  try {
+    const orgId = String(req.params.orgId)
+    const data = z
+      .object({
+        tableNumber: z.string().min(1),
+        customerName: z.string().optional(),
+        items: z
+          .array(
+            z.object({
+              menuItemId: z.string().optional(),
+              name: z.string(),
+              quantity: z.number().int().positive(),
+              price: z.number().positive(),
+            })
+          )
+          .min(1),
+      })
+      .parse(req.body)
+
+    const org = await prisma.organization.findFirst({
+      where: { id: orgId, type: { in: ["RESTAURANT", "CAFE"] as any } },
+    })
+    if (!org) return res.status(404).json({ error: "Not found" })
+
+    const total = data.items.reduce((s, i) => s + i.price * i.quantity, 0)
+
+    const order = await prisma.order.create({
+      data: {
+        tableNumber: data.tableNumber,
+        status: OrderStatus.SENT,
+        total,
+        organizationId: orgId,
+        receiptCode: makeReceiptCode(),
+        receiptToken: makeReceiptToken(),
+        items: {
+          create: data.items.map((item) => ({
+            name: item.name,
+            quantity: item.quantity,
+            price: item.price,
+            menuItemId: item.menuItemId,
+          })),
+        },
+      } as any,
+      include: { items: true },
+    })
+
+    res.status(201).json(order)
+  } catch (e: any) {
+    if (e.name === "ZodError") return res.status(400).json({ error: e.errors })
+    console.error(e)
+    res.status(500).json({ error: "Failed" })
+  }
+})
+
+router.get("/public/receipt/:code", async (req, res) => {
+  try {
+    const raw = String(req.params.code || "").trim().toUpperCase()
+    let code = raw.replace(/^R-?/, "R")
+    if (!code.startsWith("R") && code.length >= 4) code = "R" + code
+
+    const or: { receiptCode?: string; id?: string }[] = [{ receiptCode: code }]
+    if (raw && raw !== code) or.push({ receiptCode: raw })
+    // cuid-style id fallback (optional)
+    if (raw.length > 20) or.push({ id: raw })
+
+    const order = await prisma.order.findFirst({
+      where: { OR: or },
+      include: {
+        items: true,
+        organization: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            address: true,
+            city: true,
+            tin: true,
+            photoUrl: true,
+          },
+        },
+      },
+    })
+
+    if (!order) return res.status(404).json({ error: "Receipt not found" })
+
+    const scanned = !!(order as any).receiptScannedAt
+
+    res.json({
+      receiptCode: (order as any).receiptCode,
+      tableNumber: order.tableNumber,
+      total: Number(order.total),
+      paymentMethod: order.paymentMethod,
+      createdAt: order.createdAt,
+      scanned,
+      items: (order.items || []).map((i: any) => ({
+        name: i.name,
+        quantity: i.quantity,
+        price: Number(i.price),
+      })),
+      organization: {
+        id: order.organization?.id,
+        name: order.organization?.name,
+        phone: (order.organization as any)?.phone ?? null,
+        address: (order.organization as any)?.address ?? null,
+        city: (order.organization as any)?.city ?? null,
+        tin: (order.organization as any)?.tin ?? null,
+      },
+      note: "NON-FISCAL management receipt · Semaiy",
+    })
+  } catch (e) {
+    console.error("public/receipt", e)
+    res.status(500).json({ error: "Failed" })
+  }
+})
+
+// ========== AUTH from here ==========
 router.use(authenticate, requireOrganization)
 
 router.get("/settings", async (req, res) => {
@@ -16,6 +187,11 @@ router.get("/settings", async (req, res) => {
     closeTime: org?.closeTime || "22:00",
     name: org?.name,
     currency: org?.currency || "ETB",
+    phone: (org as any)?.phone ?? null,
+    address: (org as any)?.address ?? null,
+    city: (org as any)?.city ?? null,
+    tin: (org as any)?.tin ?? null,
+    photoUrl: (org as any)?.photoUrl ?? null,
   })
 })
 
@@ -25,14 +201,42 @@ router.patch("/settings", requireRole(Role.OWNER, Role.MANAGER), async (req, res
       .object({
         openTime: z.string().optional(),
         closeTime: z.string().optional(),
+        name: z.string().min(1).optional(),
+        phone: z.string().optional().nullable(),
+        address: z.string().optional().nullable(),
+        city: z.string().optional().nullable(),
+        tin: z.string().optional().nullable(),
+        photoUrl: z.string().optional().nullable(),
       })
       .parse(req.body)
+
     const org = await prisma.organization.update({
       where: { id: req.user!.organizationId! },
-      data,
+      data: {
+        ...(data.openTime !== undefined && { openTime: data.openTime }),
+        ...(data.closeTime !== undefined && { closeTime: data.closeTime }),
+        ...(data.name !== undefined && { name: data.name }),
+        ...(data.phone !== undefined && { phone: data.phone }),
+        ...(data.address !== undefined && { address: data.address }),
+        ...(data.city !== undefined && { city: data.city }),
+        ...(data.tin !== undefined && { tin: data.tin }),
+        ...(data.photoUrl !== undefined && { photoUrl: data.photoUrl }),
+      } as any,
     })
-    res.json({ openTime: org.openTime, closeTime: org.closeTime })
+
+    res.json({
+      openTime: org.openTime,
+      closeTime: org.closeTime,
+      name: org.name,
+      phone: (org as any).phone ?? null,
+      address: (org as any).address ?? null,
+      city: (org as any).city ?? null,
+      tin: (org as any).tin ?? null,
+      photoUrl: (org as any).photoUrl ?? null,
+      currency: (org as any).currency || "ETB",
+    })
   } catch (err: any) {
+    if (err.name === "ZodError") return res.status(400).json({ error: err.errors })
     res.status(400).json({ error: err.message || "Failed" })
   }
 })
@@ -216,7 +420,6 @@ router.get("/analytics", async (req, res) => {
     .sort((a, b) => b.qty - a.qty)
     .slice(0, 8)
 
-  // ——— Stock overview + low stock ———
   let stockOverview: any[] = []
   let lowStock: any[] = []
   try {
@@ -235,7 +438,6 @@ router.get("/analytics", async (req, res) => {
     }))
     lowStock = stockOverview.filter((s) => s.isLow)
   } catch {
-    // StockItem model may not exist yet
     stockOverview = []
     lowStock = []
   }
@@ -263,17 +465,20 @@ router.get("/analytics", async (req, res) => {
   const weekSales = last7Days.reduce((s, d) => s + d.sales, 0)
   const weekOrders = last7Days.reduce((s, d) => s + d.orders, 0)
 
- let health = 40
-  if (todayOrderCount >= 1) health += 15
-  if (todayOrderCount >= 10) health += 10
-  if (todaySales >= 500) health += 10
-  if (todaySales >= 2000) health += 5
-  if (weekOrders >= 20) health += 10
-  if (lowStock.length === 0 && stockOverview.length > 0) health += 10
-  if (lowStock.length >= 1) health -= 10
-  if (lowStock.length >= 3) health -= 10
-  if (activeOrders > 15) health -= 5
-  health = Math.max(0, Math.min(100, health))
+  let health = 0
+  if (todayOrderCount > 0) {
+    health = 40
+    if (todayOrderCount >= 1) health += 15
+    if (todayOrderCount >= 10) health += 10
+    if (todaySales >= 500) health += 10
+    if (todaySales >= 2000) health += 5
+    if (weekOrders >= 20) health += 10
+    if (lowStock.length === 0 && stockOverview.length > 0) health += 10
+    if (lowStock.length >= 1) health -= 10
+    if (lowStock.length >= 3) health -= 10
+    if (activeOrders > 15) health -= 5
+    health = Math.max(0, Math.min(100, health))
+  }
 
   const dayEnd = new Date(todayStart)
   dayEnd.setHours(23, 59, 59, 999)
@@ -323,37 +528,129 @@ router.get("/analytics", async (req, res) => {
   })
 })
 
+// ——— Payment report + receipt scan stats ———
 router.get("/payment-report", async (req, res) => {
-  const organizationId = req.user!.organizationId!
-  const since = new Date()
-  since.setDate(since.getDate() - 7)
+  try {
+    const organizationId = req.user!.organizationId!
+    const dateStr = String(req.query.date || "").trim()
+    const range = String(req.query.range || "today")
 
-  const orders = await prisma.order.findMany({
-    where: {
-      organizationId,
-      createdAt: { gte: since },
-      status: { not: OrderStatus.CANCELLED },
-    },
-    orderBy: { createdAt: "desc" },
-    select: {
-      id: true,
-      tableNumber: true,
-      total: true,
-      paymentMethod: true,
-      paymentReceipt: true,
-      paidAt: true,
-      createdAt: true,
-      status: true,
-    },
-  })
+    // Ethiopia calendar day (UTC+3) — Railway is usually UTC
+    const EAT_OFFSET_MS = 3 * 60 * 60 * 1000
+    const eatNow = new Date(Date.now() + EAT_OFFSET_MS)
+    const eatY = eatNow.getUTCFullYear()
+    const eatM = eatNow.getUTCMonth()
+    const eatD = eatNow.getUTCDate()
 
-  const byMethod: Record<string, number> = {}
-  for (const o of orders) {
-    const m = o.paymentMethod || "unknown"
-    byMethod[m] = (byMethod[m] || 0) + Number(o.total)
+    let since: Date
+    let until: Date | undefined
+
+    if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      const [y, m, d] = dateStr.split("-").map(Number)
+      since = new Date(Date.UTC(y, m - 1, d) - EAT_OFFSET_MS)
+      until = new Date(Date.UTC(y, m - 1, d + 1) - EAT_OFFSET_MS)
+    } else {
+      since = new Date(Date.UTC(eatY, eatM, eatD) - EAT_OFFSET_MS)
+      if (range === "7d") {
+        since = new Date(Date.UTC(eatY, eatM, eatD - 6) - EAT_OFFSET_MS)
+      } else if (range === "month") {
+        since = new Date(Date.UTC(eatY, eatM, 1) - EAT_OFFSET_MS)
+      } else if (range === "year") {
+        since = new Date(Date.UTC(eatY, 0, 1) - EAT_OFFSET_MS)
+      }
+    }
+
+    const orders = await prisma.order.findMany({
+      where: {
+        organizationId,
+        createdAt: until ? { gte: since, lt: until } : { gte: since },
+        status: { not: OrderStatus.CANCELLED },
+      },
+      orderBy: { createdAt: "desc" },
+      include: {
+        items: { select: { name: true, quantity: true, price: true } },
+        staff: { select: { name: true } },
+      },
+    })
+
+    const byMethod: Record<string, number> = {}
+    const itemCountAll: Record<string, number> = {}
+    const itemCountScanned: Record<string, number> = {}
+    let scannedCount = 0
+    let notScannedCount = 0
+    let scannedTotal = 0
+
+    const mapped = orders.map((o) => {
+      const m = o.paymentMethod || "unknown"
+      byMethod[m] = (byMethod[m] || 0) + Number(o.total)
+
+      for (const it of o.items) {
+        itemCountAll[it.name] =
+          (itemCountAll[it.name] || 0) + Number(it.quantity || 0)
+      }
+
+      const scannedAt = (o as any).receiptScannedAt as Date | null | undefined
+      if (scannedAt) {
+        scannedCount += 1
+        scannedTotal += Number(o.total)
+        for (const it of o.items) {
+          itemCountScanned[it.name] =
+            (itemCountScanned[it.name] || 0) + Number(it.quantity || 0)
+        }
+      } else {
+        notScannedCount += 1
+      }
+
+      return {
+        id: o.id,
+        tableNumber: o.tableNumber,
+        total: Number(o.total),
+        paymentMethod: o.paymentMethod,
+        paymentReceipt: (o as any).paymentReceipt ?? null,
+        paidAt: (o as any).paidAt ?? null,
+        createdAt: o.createdAt,
+        status: o.status,
+        staffName: o.staff?.name || null,
+        branchId: (o as any).branchId ?? null,
+        items: o.items.map((i) => ({
+          name: i.name,
+          quantity: i.quantity,
+          price: Number(i.price),
+        })),
+        receiptCode: (o as any).receiptCode ?? null,
+        receiptToken: (o as any).receiptToken ?? null,
+        receiptPrintedAt: (o as any).receiptPrintedAt ?? null,
+        receiptPrintCount: (o as any).receiptPrintCount ?? 0,
+        receiptScannedAt: scannedAt ?? null,
+      }
+    })
+
+    const topItemsScanned = Object.entries(itemCountScanned)
+      .map(([name, qty]) => ({ name, qty }))
+      .sort((a, b) => b.qty - a.qty)
+      .slice(0, 20)
+
+    const topItemsAll = Object.entries(itemCountAll)
+      .map(([name, qty]) => ({ name, qty }))
+      .sort((a, b) => b.qty - a.qty)
+      .slice(0, 20)
+
+    res.json({
+      orders: mapped,
+      byMethod,
+      range: dateStr || range,
+      since: since.toISOString(),
+      until: until ? until.toISOString() : null,
+      scannedCount,
+      notScannedCount,
+      scannedTotal: Math.round(scannedTotal * 100) / 100,
+      topItemsScanned,
+      topItemsAll,
+    })
+  } catch (e) {
+    console.error("payment-report", e)
+    res.status(500).json({ error: "Failed" })
   }
-
-  res.json({ orders, byMethod })
 })
 
 router.post(
@@ -364,15 +661,185 @@ router.post(
     const cutoff = new Date()
     cutoff.setDate(cutoff.getDate() - 7)
 
-    const result = await prisma.order.updateMany({
-      where: {
-        organizationId,
-        paidAt: { lt: cutoff },
-        paymentReceipt: { not: null },
-      },
-      data: { paymentReceipt: null },
-    })
-    res.json({ ok: true, cleared: result.count })
+    try {
+      const result = await prisma.order.updateMany({
+        where: {
+          organizationId,
+          paidAt: { lt: cutoff },
+          paymentReceipt: { not: null },
+        },
+        data: { paymentReceipt: null },
+      })
+      res.json({ ok: true, cleared: result.count })
+    } catch {
+      res.json({ ok: true, cleared: 0 })
+    }
+  }
+)
+
+// ——— Receipt scan (once only) ———
+router.post(
+  "/receipt/scan",
+  requireRole(Role.OWNER, Role.MANAGER, Role.WAITER, Role.STAFF),
+  async (req, res) => {
+    try {
+      const body = z
+        .object({
+          code: z.string().min(4).max(120),
+        })
+        .parse(req.body)
+
+      const organizationId = req.user!.organizationId!
+      const parsed = normalizeReceiptCode(body.code)
+
+      let order =
+        parsed.orderId
+          ? await prisma.order.findFirst({
+              where: {
+                organizationId,
+                id: parsed.orderId,
+              },
+              include: { items: true },
+            })
+          : null
+
+      if (!order && parsed.code) {
+        order = await prisma.order.findFirst({
+          where: {
+            organizationId,
+            OR: [
+              { receiptCode: parsed.code },
+              { receiptCode: parsed.code.replace(/^R/, "") },
+            ],
+          } as any,
+          include: { items: true },
+        })
+      }
+
+      // Fallback: last 8 chars of id typed as code
+      if (!order) {
+        const tail = body.code.trim().toUpperCase().replace(/^R/, "")
+        if (tail.length >= 6) {
+          const candidates = await prisma.order.findMany({
+            where: { organizationId },
+            orderBy: { createdAt: "desc" },
+            take: 200,
+            include: { items: true },
+          })
+          order =
+            candidates.find(
+              (o) =>
+                o.id.toUpperCase().endsWith(tail) ||
+                String((o as any).receiptCode || "").toUpperCase() === `R${tail}` ||
+                String((o as any).receiptCode || "").toUpperCase() === tail
+            ) || null
+        }
+      }
+
+      if (!order) {
+        return res.status(404).json({ error: "Receipt not found" })
+      }
+
+      // Optional token check when QR payload includes token
+      if (
+        parsed.token &&
+        (order as any).receiptToken &&
+        parsed.token !== String((order as any).receiptToken).toUpperCase()
+      ) {
+        return res.status(400).json({ error: "Invalid receipt token" })
+      }
+
+      if ((order as any).receiptScannedAt) {
+        return res.status(409).json({
+          error: "Already scanned",
+          scannedAt: (order as any).receiptScannedAt,
+          order: {
+            id: order.id,
+            receiptCode: (order as any).receiptCode,
+            tableNumber: order.tableNumber,
+            total: Number(order.total),
+          },
+        })
+      }
+
+      const updated = await prisma.order.update({
+        where: { id: order.id },
+        data: {
+          receiptScannedAt: new Date(),
+          receiptScannedById: req.user!.userId,
+        } as any,
+        include: { items: true },
+      })
+
+      res.json({
+        ok: true,
+        message: "Scanned once — locked",
+        order: {
+          id: updated.id,
+          receiptCode: (updated as any).receiptCode,
+          tableNumber: updated.tableNumber,
+          total: Number(updated.total),
+          paymentMethod: updated.paymentMethod,
+          items: updated.items,
+          receiptScannedAt: (updated as any).receiptScannedAt,
+          createdAt: updated.createdAt,
+        },
+      })
+    } catch (e: any) {
+      if (e.name === "ZodError") return res.status(400).json({ error: e.errors })
+      console.error("receipt scan", e)
+      res.status(500).json({ error: e.message || "Scan failed" })
+    }
+  }
+)
+
+// Mark official print / COPY
+router.post(
+  "/receipt/print/:orderId",
+  requireRole(Role.OWNER, Role.MANAGER, Role.WAITER, Role.STAFF),
+  async (req, res) => {
+    try {
+      const organizationId = req.user!.organizationId!
+      const id = String(req.params.orderId)
+      let order = await prisma.order.findFirst({
+        where: { id, organizationId },
+      })
+      if (!order) return res.status(404).json({ error: "Not found" })
+
+      // Backfill code for old orders
+      if (!(order as any).receiptCode) {
+        order = await prisma.order.update({
+          where: { id },
+          data: {
+            receiptCode: makeReceiptCode(),
+            receiptToken: makeReceiptToken(),
+          } as any,
+        })
+      }
+
+      const printCount = Number((order as any).receiptPrintCount || 0)
+      const isCopy = printCount > 0
+
+      const updated = await prisma.order.update({
+        where: { id },
+        data: {
+          receiptPrintedAt: (order as any).receiptPrintedAt || new Date(),
+          receiptPrintCount: { increment: 1 },
+        } as any,
+      })
+
+      res.json({
+        ok: true,
+        isCopy,
+        receiptCode: (updated as any).receiptCode,
+        receiptToken: (updated as any).receiptToken,
+        receiptPrintCount: (updated as any).receiptPrintCount,
+        receiptScannedAt: (updated as any).receiptScannedAt,
+      })
+    } catch (e: any) {
+      console.error("receipt print", e)
+      res.status(500).json({ error: e.message || "Failed" })
+    }
   }
 )
 
