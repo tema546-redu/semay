@@ -7,117 +7,219 @@ import { Role } from "@prisma/client"
 const router = Router()
 router.use(authenticate, requireOrganization)
 
+function mapItem(s: {
+  id: string
+  name: string
+  unit: string
+  quantity: any
+  lowAt: any
+  unitCost?: any
+  note: string | null
+  location?: string
+  createdAt: Date
+  updatedAt: Date
+  organizationId: string
+  branchId: string | null
+}) {
+  const quantity = Number(s.quantity)
+  const lowAt = s.lowAt != null ? Number(s.lowAt) : null
+  const unitCost = s.unitCost != null ? Number(s.unitCost) : null
+  return {
+    ...s,
+    quantity,
+    lowAt,
+    unitCost,
+    location: s.location || "STORE",
+    isLow: lowAt != null && quantity <= lowAt,
+    value: unitCost != null ? Math.round(quantity * unitCost * 100) / 100 : null,
+  }
+}
+
+function userIdOf(req: any): string | null {
+  return req.user?.userId ?? req.user?.id ?? null
+}
+
+// ─── list / create ─────────────────────────────────────────
+
 router.get("/", async (req, res) => {
-  const organizationId = req.user!.organizationId!
-  const list = await prisma.stockItem.findMany({
-    where: { organizationId },
-    orderBy: { name: "asc" },
-  })
-  res.json(
-    list.map((s) => ({
-      ...s,
-      quantity: Number(s.quantity),
-      lowAt: s.lowAt != null ? Number(s.lowAt) : null,
-      isLow: s.lowAt != null && Number(s.quantity) <= Number(s.lowAt),
-    }))
-  )
+  try {
+    const organizationId = req.user!.organizationId!
+    const location = req.query.location as string | undefined
+
+    const items = await prisma.stockItem.findMany({
+      where: {
+        organizationId,
+        ...(location ? { location } : {}),
+      },
+      orderBy: { name: "asc" },
+    })
+    res.json(items.map(mapItem))
+  } catch (e: any) {
+    console.error("stock list", e)
+    res.status(500).json({ error: e.message || "Failed" })
+  }
 })
 
 router.post("/", requireRole(Role.OWNER, Role.MANAGER), async (req, res) => {
   try {
-    const data = z
+       const data = z
       .object({
         name: z.string().min(1),
-        unit: z.enum(["kg", "L", "pcs"]).default("kg"),
+        unit: z.enum(["kg", "L", "pcs", "bag", "box"]).default("kg"),
         quantity: z.number().min(0),
         lowAt: z.number().min(0).optional().nullable(),
+        unitCost: z.number().min(0).optional().nullable(),
         note: z.string().optional(),
+        location: z.enum(["BAR", "KITCHEN", "STORE"]).optional().default("STORE"),
       })
       .parse(req.body)
 
-    const row = await prisma.stockItem.create({
-      data: {
-        name: data.name.trim(),
-        unit: data.unit,
-        quantity: data.quantity,
-        lowAt: data.lowAt ?? null,
-        note: data.note,
-        organizationId: req.user!.organizationId!,
+    const organizationId = req.user!.organizationId!
+    const userId = userIdOf(req)
+
+    const row = await prisma.$transaction(async (tx) => {
+    const item = await tx.stockItem.create({
+        data: {
+          name: data.name.trim(),
+          unit: data.unit,
+          quantity: data.quantity,
+          lowAt: data.lowAt ?? null,
+          unitCost: data.unitCost ?? null,
+          note: data.note,
+          location: data.location || "STORE",
+          organizationId,
+        },
+      })
+
+      if (data.quantity > 0) {
+        await tx.stockMovement.create({
+          data: {
+            organizationId,
+            stockItemId: item.id,
+            type: "IN",
+            quantity: data.quantity,
+            balanceAfter: data.quantity,
+            note: data.note || "Opening stock",
+            userId,
+          },
+        })
+      }
+
+      return item
+    })
+
+    res.status(201).json(mapItem(row))
+  } catch (e: any) {
+    if (e.name === "ZodError") return res.status(400).json({ error: e.errors })
+    console.error("stock create", e)
+    res.status(500).json({ error: e.message || "Failed" })
+  }
+})
+
+// ─── static paths MUST be before /:id ──────────────────────
+
+/** Day / range report — what was bought, issued, counted */
+router.get("/report", async (req, res) => {
+  try {
+    const organizationId = req.user!.organizationId!
+    const date = String(req.query.date || "").trim()
+    const range = String(req.query.range || "today")
+    const location = String(req.query.location || "").trim()
+
+    let from: Date
+    let to: Date
+
+    if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      from = new Date(`${date}T00:00:00.000`)
+      to = new Date(`${date}T23:59:59.999`)
+    } else if (range === "7d") {
+      to = new Date()
+      from = new Date()
+      from.setDate(from.getDate() - 6)
+      from.setHours(0, 0, 0, 0)
+    } else if (range === "month") {
+      to = new Date()
+      from = new Date(to.getFullYear(), to.getMonth(), 1)
+    } else {
+      from = new Date()
+      from.setHours(0, 0, 0, 0)
+      to = new Date()
+      to.setHours(23, 59, 59, 999)
+    }
+
+       const rows = await prisma.stockMovement.findMany({
+      where: {
+        organizationId,
+        createdAt: { gte: from, lte: to },
+        ...(location
+          ? { stockItem: { location } }
+          : {}),
       },
+      include: {
+        stockItem: {
+          select: { id: true, name: true, unit: true, unitCost: true, location: true },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 500,
     })
-    res.status(201).json({
-      ...row,
-      quantity: Number(row.quantity),
-      lowAt: row.lowAt != null ? Number(row.lowAt) : null,
+
+    const movements = rows.map((m) => {
+      const qty = Number(m.quantity)
+      const unitCost =
+        m.stockItem.unitCost != null ? Number(m.stockItem.unitCost) : null
+      const lineValue =
+        m.type === "IN" && unitCost != null
+          ? Math.round(qty * unitCost * 100) / 100
+          : null
+      return {
+        id: m.id,
+        type: m.type,
+        quantity: qty,
+        balanceAfter: Number(m.balanceAfter),
+        difference: m.difference != null ? Number(m.difference) : null,
+        invoiceNo: m.invoiceNo,
+        note: m.note,
+        createdAt: m.createdAt,
+        itemId: m.stockItemId,
+        itemName: m.stockItem.name,
+        unit: m.stockItem.unit,
+        unitCost,
+        lineValue,
+      }
     })
-  } catch (e: any) {
-    if (e.name === "ZodError") return res.status(400).json({ error: e.errors })
-    res.status(500).json({ error: e.message || "Failed" })
-  }
-})
 
-/** Add more stock (purchase) */
-router.post("/:id/add", requireRole(Role.OWNER, Role.MANAGER), async (req, res) => {
-  try {
-    const id = String(req.params.id)
-    const organizationId = req.user!.organizationId!
-    const { amount } = z.object({ amount: z.number().positive() }).parse(req.body)
+    const bought = movements.filter((m) => m.type === "IN")
+    const issued = movements.filter((m) => m.type === "OUT")
+    const counted = movements.filter((m) => m.type === "COUNT")
+    const boughtValue = bought.reduce((s, m) => s + (m.lineValue || 0), 0)
 
-    const item = await prisma.stockItem.findFirst({ where: { id, organizationId } })
-    if (!item) return res.status(404).json({ error: "Not found" })
-
-    const updated = await prisma.stockItem.update({
-      where: { id },
-      data: { quantity: Number(item.quantity) + amount },
-    })
     res.json({
-      ...updated,
-      quantity: Number(updated.quantity),
-      lowAt: updated.lowAt != null ? Number(updated.lowAt) : null,
+      from: from.toISOString(),
+      to: to.toISOString(),
+      date: date || null,
+      range: date ? null : range,
+      summary: {
+        receiveCount: bought.length,
+        issueCount: issued.length,
+        countCount: counted.length,
+        boughtValue,
+      },
+      bought,
+      issued,
+      counted,
+      movements,
     })
   } catch (e: any) {
-    if (e.name === "ZodError") return res.status(400).json({ error: e.errors })
-    res.status(500).json({ error: e.message || "Failed" })
+    console.error("stock report", e)
+    res.status(500).json({
+      error:
+        e.message ||
+        "Report failed — check StockMovement table exists (prisma db push)",
+    })
   }
 })
 
-router.patch("/:id", requireRole(Role.OWNER, Role.MANAGER), async (req, res) => {
-  try {
-    const id = String(req.params.id)
-    const organizationId = req.user!.organizationId!
-    const data = z
-      .object({
-        name: z.string().min(1).optional(),
-        unit: z.enum(["kg", "L", "pcs"]).optional(),
-        quantity: z.number().min(0).optional(),
-        lowAt: z.number().min(0).nullable().optional(),
-        note: z.string().nullable().optional(),
-      })
-      .parse(req.body)
-
-    const item = await prisma.stockItem.findFirst({ where: { id, organizationId } })
-    if (!item) return res.status(404).json({ error: "Not found" })
-
-    const updated = await prisma.stockItem.update({ where: { id }, data })
-    res.json({
-      ...updated,
-      quantity: Number(updated.quantity),
-      lowAt: updated.lowAt != null ? Number(updated.lowAt) : null,
-    })
-  } catch (e: any) {
-    if (e.name === "ZodError") return res.status(400).json({ error: e.errors })
-    res.status(500).json({ error: e.message || "Failed" })
-  }
-})
-
-router.delete("/:id", requireRole(Role.OWNER, Role.MANAGER), async (req, res) => {
-  const id = String(req.params.id)
-  const organizationId = req.user!.organizationId!
-  await prisma.stockItem.deleteMany({ where: { id, organizationId } })
-  res.json({ ok: true })
-})
-
-/** Link menu item → how much stock one sale uses */
 router.post("/recipe", requireRole(Role.OWNER, Role.MANAGER), async (req, res) => {
   try {
     const data = z
@@ -154,29 +256,312 @@ router.post("/recipe", requireRole(Role.OWNER, Role.MANAGER), async (req, res) =
     res.json(line)
   } catch (e: any) {
     if (e.name === "ZodError") return res.status(400).json({ error: e.errors })
+    console.error("stock recipe", e)
     res.status(500).json({ error: e.message || "Failed" })
   }
 })
 
 router.get("/recipe/:menuItemId", async (req, res) => {
-  const menuItemId = String(req.params.menuItemId)
-  const organizationId = req.user!.organizationId!
-  const menu = await prisma.menuItem.findFirst({ where: { id: menuItemId, organizationId } })
-  if (!menu) return res.status(404).json({ error: "Not found" })
+  try {
+    const menuItemId = String(req.params.menuItemId)
+    const organizationId = req.user!.organizationId!
+    const menu = await prisma.menuItem.findFirst({
+      where: { id: menuItemId, organizationId },
+    })
+    if (!menu) return res.status(404).json({ error: "Not found" })
 
-  const lines = await prisma.recipeLine.findMany({
-    where: { menuItemId },
-    include: { stockItem: true },
-  })
-  res.json(
-    lines.map((l) => ({
-      id: l.id,
-      stockItemId: l.stockItemId,
-      name: l.stockItem.name,
-      unit: l.stockItem.unit,
-      qtyPerSale: Number(l.qtyPerSale),
-    }))
-  )
+    const lines = await prisma.recipeLine.findMany({
+      where: { menuItemId },
+      include: { stockItem: true },
+    })
+    res.json(
+      lines.map((l) => ({
+        id: l.id,
+        stockItemId: l.stockItemId,
+        name: l.stockItem.name,
+        unit: l.stockItem.unit,
+        qtyPerSale: Number(l.qtyPerSale),
+      }))
+    )
+  } catch (e: any) {
+    console.error("stock get recipe", e)
+    res.status(500).json({ error: e.message || "Failed" })
+  }
+})
+
+// ─── /:id routes ───────────────────────────────────────────
+
+/** Receive (purchase / delivery) */
+router.post("/:id/receive", requireRole(Role.OWNER, Role.MANAGER), async (req, res) => {
+  try {
+    const id = String(req.params.id)
+    const organizationId = req.user!.organizationId!
+    const userId = userIdOf(req)
+    const body = z
+      .object({
+        amount: z.number().positive(),
+        invoiceNo: z.string().optional(),
+        note: z.string().optional(),
+        unitCost: z.number().min(0).optional().nullable(),
+      })
+      .parse(req.body)
+
+    const item = await prisma.stockItem.findFirst({ where: { id, organizationId } })
+    if (!item) return res.status(404).json({ error: "Not found" })
+
+    const newQty = Number(item.quantity) + body.amount
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const u = await tx.stockItem.update({
+        where: { id },
+        data: {
+          quantity: newQty,
+          ...(body.unitCost != null ? { unitCost: body.unitCost } : {}),
+        },
+      })
+      await tx.stockMovement.create({
+        data: {
+          organizationId,
+          stockItemId: id,
+          type: "IN",
+          quantity: body.amount,
+          balanceAfter: newQty,
+          invoiceNo: body.invoiceNo || null,
+          note: body.note || null,
+          userId,
+        },
+      })
+      return u
+    })
+
+    res.json(mapItem(updated))
+  } catch (e: any) {
+    if (e.name === "ZodError") return res.status(400).json({ error: e.errors })
+    console.error("stock receive", e)
+    res.status(500).json({ error: e.message || "Failed" })
+  }
+})
+
+/** Issue (kitchen / bar / use) */
+router.post(
+  "/:id/issue",
+  requireRole(Role.OWNER, Role.MANAGER, Role.STAFF),
+  async (req, res) => {
+    try {
+      const id = String(req.params.id)
+      const organizationId = req.user!.organizationId!
+      const userId = userIdOf(req)
+      const body = z
+        .object({
+          amount: z.number().positive(),
+          note: z.string().optional(),
+        })
+        .parse(req.body)
+
+      const item = await prisma.stockItem.findFirst({ where: { id, organizationId } })
+      if (!item) return res.status(404).json({ error: "Not found" })
+
+      const current = Number(item.quantity)
+      if (body.amount > current) {
+        return res.status(400).json({
+          error: `Only ${current} ${item.unit} available`,
+        })
+      }
+
+      const newQty = current - body.amount
+
+      const updated = await prisma.$transaction(async (tx) => {
+        const u = await tx.stockItem.update({
+          where: { id },
+          data: { quantity: newQty },
+        })
+        await tx.stockMovement.create({
+          data: {
+            organizationId,
+            stockItemId: id,
+            type: "OUT",
+            quantity: body.amount,
+            balanceAfter: newQty,
+            note: body.note || "Issued",
+            userId,
+          },
+        })
+        return u
+      })
+
+      res.json(mapItem(updated))
+    } catch (e: any) {
+      if (e.name === "ZodError") return res.status(400).json({ error: e.errors })
+      console.error("stock issue", e)
+      res.status(500).json({ error: e.message || "Failed" })
+    }
+  }
+)
+
+/** Physical count */
+router.post("/:id/count", requireRole(Role.OWNER, Role.MANAGER), async (req, res) => {
+  try {
+    const id = String(req.params.id)
+    const organizationId = req.user!.organizationId!
+    const userId = userIdOf(req)
+    const body = z
+      .object({
+        counted: z.number().min(0),
+        note: z.string().optional(),
+      })
+      .parse(req.body)
+
+    const item = await prisma.stockItem.findFirst({ where: { id, organizationId } })
+    if (!item) return res.status(404).json({ error: "Not found" })
+
+    const systemQty = Number(item.quantity)
+    const difference = body.counted - systemQty
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const u = await tx.stockItem.update({
+        where: { id },
+        data: { quantity: body.counted },
+      })
+      await tx.stockMovement.create({
+        data: {
+          organizationId,
+          stockItemId: id,
+          type: "COUNT",
+          quantity: body.counted,
+          balanceAfter: body.counted,
+          difference,
+          note: body.note || "Physical count",
+          userId,
+        },
+      })
+      return u
+    })
+
+    res.json({
+      ...mapItem(updated),
+      difference,
+      previousQuantity: systemQty,
+    })
+  } catch (e: any) {
+    if (e.name === "ZodError") return res.status(400).json({ error: e.errors })
+    console.error("stock count", e)
+    res.status(500).json({ error: e.message || "Failed" })
+  }
+})
+
+/** Alias for receive */
+router.post("/:id/add", requireRole(Role.OWNER, Role.MANAGER), async (req, res) => {
+  try {
+    const id = String(req.params.id)
+    const organizationId = req.user!.organizationId!
+    const userId = userIdOf(req)
+    const { amount } = z.object({ amount: z.number().positive() }).parse(req.body)
+
+    const item = await prisma.stockItem.findFirst({ where: { id, organizationId } })
+    if (!item) return res.status(404).json({ error: "Not found" })
+
+    const newQty = Number(item.quantity) + amount
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const u = await tx.stockItem.update({
+        where: { id },
+        data: { quantity: newQty },
+      })
+      await tx.stockMovement.create({
+        data: {
+          organizationId,
+          stockItemId: id,
+          type: "IN",
+          quantity: amount,
+          balanceAfter: newQty,
+          note: "Restock",
+          userId,
+        },
+      })
+      return u
+    })
+
+    res.json(mapItem(updated))
+  } catch (e: any) {
+    if (e.name === "ZodError") return res.status(400).json({ error: e.errors })
+    console.error("stock add", e)
+    res.status(500).json({ error: e.message || "Failed" })
+  }
+})
+
+router.get("/:id/movements", async (req, res) => {
+  try {
+    const id = String(req.params.id)
+    const organizationId = req.user!.organizationId!
+    const item = await prisma.stockItem.findFirst({ where: { id, organizationId } })
+    if (!item) return res.status(404).json({ error: "Not found" })
+
+    const rows = await prisma.stockMovement.findMany({
+      where: { stockItemId: id, organizationId },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    })
+
+    res.json(
+      rows.map((m) => ({
+        id: m.id,
+        type: m.type,
+        quantity: Number(m.quantity),
+        balanceAfter: Number(m.balanceAfter),
+        difference: m.difference != null ? Number(m.difference) : null,
+        invoiceNo: m.invoiceNo,
+        note: m.note,
+        createdAt: m.createdAt,
+      }))
+    )
+  } catch (e: any) {
+    console.error("stock movements", e)
+    res.status(500).json({
+      error:
+        e.message ||
+        "Failed — check StockMovement table exists (prisma db push)",
+    })
+  }
+})
+
+router.patch("/:id", requireRole(Role.OWNER, Role.MANAGER), async (req, res) => {
+  try {
+    const id = String(req.params.id)
+    const organizationId = req.user!.organizationId!
+    const data = z
+      .object({
+       name: z.string().min(1).optional(),
+        unit: z.enum(["kg", "L", "pcs", "bag", "box"]).optional(),
+        quantity: z.number().min(0).optional(),
+        lowAt: z.number().min(0).nullable().optional(),
+        unitCost: z.number().min(0).nullable().optional(),
+        note: z.string().nullable().optional(),
+        location: z.enum(["BAR", "KITCHEN", "STORE"]).optional(),
+      })
+      .parse(req.body)
+
+    const item = await prisma.stockItem.findFirst({ where: { id, organizationId } })
+    if (!item) return res.status(404).json({ error: "Not found" })
+
+    const updated = await prisma.stockItem.update({ where: { id }, data })
+    res.json(mapItem(updated))
+  } catch (e: any) {
+    if (e.name === "ZodError") return res.status(400).json({ error: e.errors })
+    console.error("stock patch", e)
+    res.status(500).json({ error: e.message || "Failed" })
+  }
+})
+
+router.delete("/:id", requireRole(Role.OWNER, Role.MANAGER), async (req, res) => {
+  try {
+    const id = String(req.params.id)
+    const organizationId = req.user!.organizationId!
+    await prisma.stockItem.deleteMany({ where: { id, organizationId } })
+    res.json({ ok: true })
+  } catch (e: any) {
+    console.error("stock delete", e)
+    res.status(500).json({ error: e.message || "Failed" })
+  }
 })
 
 export default router

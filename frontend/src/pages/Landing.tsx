@@ -43,9 +43,9 @@ export default function Landing() {
               <Globe className="w-3.5 h-3.5" />
               {isAm ? "EN" : "አማ"}
             </button>
-            <Link
+                        <Link
               to="/login"
-              className="text-sm text-stone-600 hover:text-stone-900 px-2.5 py-1.5 hidden sm:inline"
+              className="text-sm text-stone-600 hover:text-stone-900 px-2 py-1.5"
             >
               {isAm ? "ግባ" : "Sign in"}
             </Link>

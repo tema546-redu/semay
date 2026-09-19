@@ -100,9 +100,9 @@ export default function Profile() {
 
       <form onSubmit={save} className="max-w-md mx-auto p-5 space-y-5">
         <p className="text-xs text-stone-500 leading-relaxed">
-          This is your personal login. Restaurant phone, address and TIN are under{" "}
+          {" "}
           <Link to="/settings" className="underline text-stone-800">
-            Settings
+           
           </Link>
           .
         </p>

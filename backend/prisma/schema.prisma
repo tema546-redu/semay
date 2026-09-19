@@ -99,6 +99,7 @@ model Organization {
   id           String       @id @default(cuid())
   name         String
   type         BusinessType
+  typeSwitchedAt  DateTime?
   address      String?
   city         String?
   country      String       @default("Ethiopia")
@@ -158,6 +159,10 @@ model Organization {
   parentId                String?
   parent                  Organization?            @relation("OrgTree", fields: [parentId], references: [id], onDelete: SetNull)
   children                Organization[]           @relation("OrgTree")
+  garmentDefects          GarmentDefect[]
+  garmentDailyReports     GarmentDailyReport[]
+  garmentWorkers GarmentWorker[]
+  garmentAttendances GarmentAttendance[]
 }
 
 model Subscription {
@@ -705,25 +710,6 @@ model PharmacySaleItem {
   @@index([productId])
 }
 
-model StockItem {
-  id             String       @id @default(cuid())
-  organizationId String
-  name           String
-  unit           String       @default("kg")
-  quantity       Decimal      @db.Decimal(14, 3)
-  lowAt          Decimal?     @db.Decimal(14, 3)
-  note           String?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  branchId       String?
-  branch         Branch?      @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: SetNull)
-  recipeLines    RecipeLine[]
-
-  @@index([organizationId])
-  @@index([branchId])
-  @@index([name])
-}
 
 model RecipeLine {
   id          String    @id @default(cuid())
@@ -1107,6 +1093,8 @@ model GarmentProductionOrder {
   updatedAt      DateTime         @updatedAt
 
   stageLogs GarmentStageLog[]
+  defects GarmentDefect[]
+  dailyReports GarmentDailyReport[]
 
   @@index([organizationId])
   @@index([stage])
@@ -1125,4 +1113,144 @@ model GarmentStageLog {
   createdById String?
 
   @@index([orderId])
+}
+
+enum DefectType {
+  STITCHING
+  WRONG_SIZE
+  FABRIC_DAMAGE
+  MISSING_BUTTON
+  WRONG_LABEL
+  COLOR_ISSUE
+  OTHER
+}
+
+model GarmentDefect {
+  id             String     @id @default(cuid())
+  orderId        String
+  order          GarmentProductionOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  defectType     DefectType
+  quantity       Int
+  stage          ProductionStage?
+  note           String?
+  estimatedCost  Decimal?   @db.Decimal(12, 2)
+  createdById    String?
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime   @default(now())
+
+  @@index([orderId])
+  @@index([organizationId])
+  @@index([createdAt])
+}
+
+model GarmentDailyReport {
+  id             String   @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String?
+  userName       String?
+  orderId        String?
+  order          GarmentProductionOrder? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  stage          ProductionStage?
+  quantity       Int
+  note           String?
+  reportDate     DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, reportDate])
+  @@index([userId])
+  @@index([orderId])
+}
+
+enum AttendanceStatus {
+  PRESENT
+  LATE
+  ABSENT
+  EARLY_LEAVE
+}
+
+model GarmentAttendance {
+  id             String            @id @default(cuid())
+  organizationId String
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String?
+  workerId       String?
+  worker         GarmentWorker?    @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  workDate       DateTime
+  status         AttendanceStatus
+  reason         String?
+  note           String?
+  markedById     String?
+  source         String            @default("MANUAL")
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([organizationId, workDate])
+  @@index([workerId, workDate])
+  @@index([userId, workDate])
+}
+
+model GarmentWorker {
+  id             String   @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  phone          String?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  annualLeaveDays  Int      @default(14)   
+  usedLeaveDays    Int      @default(0)    
+
+  attendances    GarmentAttendance[]   
+
+  @@index([organizationId])
+}
+
+model StockItem {
+  id             String          @id @default(cuid())
+  organizationId String
+  name           String
+  unit           String          @default("kg")
+  quantity       Decimal         @db.Decimal(14, 3)
+  lowAt          Decimal?        @db.Decimal(14, 3)
+  unitCost       Decimal?        @db.Decimal(14, 2)
+  note           String?
+  location       String          @default("STORE")
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  branchId       String?
+  branch         Branch?         @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  recipeLines    RecipeLine[]
+  movements      StockMovement[]
+
+  @@index([organizationId])
+  @@index([organizationId, location])
+  @@index([branchId])
+  @@index([name])
+}
+
+model StockMovement {
+  id             String    @id @default(cuid())
+  organizationId String
+  stockItemId    String
+  /// IN = receive, OUT = issue to kitchen/bar, COUNT = physical count, SALE = auto from POS (optional later)
+  type           String
+  /// For IN/OUT: amount moved. For COUNT: the physical qty counted.
+  quantity       Decimal   @db.Decimal(14, 3)
+  /// On-hand after this movement
+  balanceAfter   Decimal   @db.Decimal(14, 3)
+  /// COUNT only: physical - system (before count)
+  difference     Decimal?  @db.Decimal(14, 3)
+  invoiceNo      String?
+  note           String?
+  userId         String?
+  createdAt      DateTime  @default(now())
+  stockItem      StockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([stockItemId, createdAt])
+  @@index([type])
 }

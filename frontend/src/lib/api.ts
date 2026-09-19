@@ -229,6 +229,11 @@ updateSettings: (data: {
     body: JSON.stringify(data),
   }),
   closingReport: () => request<any>("/api/restaurant/closing-report"),
+  switchToRestaurant: () =>
+  request<any>("/api/restaurant/switch-type", {
+    method: "POST",
+    body: JSON.stringify({ toType: "RESTAURANT", confirm: true }),
+  }),
 }
 
 export const expensesApi = {
@@ -353,22 +358,77 @@ export const pharmacyApi = {
 }
 
 export const stockApi = {
-  list: () => request<any[]>("/api/stock"),
+  list: (params?: { location?: string }) => {
+    const q = params?.location
+      ? `?location=${encodeURIComponent(params.location)}`
+      : ""
+    return request<any[]>(`/api/stock${q}`)
+  },
   create: (data: {
     name: string
     unit: string
     quantity: number
     lowAt?: number | null
+    unitCost?: number | null
     note?: string
+    location?: string
   }) => request<any>("/api/stock", { method: "POST", body: JSON.stringify(data) }),
+    update: (
+    id: string,
+    data: {
+      name?: string
+      unit?: string
+      quantity?: number
+      lowAt?: number | null
+      unitCost?: number | null
+      note?: string | null
+      location?: "BAR" | "KITCHEN" | "STORE"
+    }
+  ) =>
+    request<any>(`/api/stock/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  remove: (id: string) => request<any>(`/api/stock/${id}`, { method: "DELETE" }),
   addQty: (id: string, amount: number) =>
     request<any>(`/api/stock/${id}/add`, {
       method: "POST",
       body: JSON.stringify({ amount }),
     }),
-  update: (id: string, data: any) =>
-    request<any>(`/api/stock/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
-  remove: (id: string) => request<any>(`/api/stock/${id}`, { method: "DELETE" }),
+  receive: (
+    id: string,
+    data: { amount: number; invoiceNo?: string; note?: string; unitCost?: number | null }
+  ) =>
+    request<any>(`/api/stock/${id}/receive`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  issue: (id: string, data: { amount: number; note?: string }) =>
+    request<any>(`/api/stock/${id}/issue`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  count: (id: string, data: { counted: number; note?: string }) =>
+    request<any>(`/api/stock/${id}/count`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  movements: (id: string) => request<any[]>(`/api/stock/${id}/movements`),
+
+  /** Day / range report — what was bought, issued, counted */
+   report: (params?: {
+    date?: string
+    range?: "today" | "7d" | "month"
+    location?: string
+  }) => {
+    const q = new URLSearchParams()
+    if (params?.date) q.set("date", params.date)
+    else if (params?.range) q.set("range", params.range)
+    if (params?.location) q.set("location", params.location)
+    const qs = q.toString()
+    return request<any>(`/api/stock/report${qs ? `?${qs}` : ""}`)
+  },
+
   setRecipe: (data: { menuItemId: string; stockItemId: string; qtyPerSale: number }) =>
     request<any>("/api/stock/recipe", { method: "POST", body: JSON.stringify(data) }),
   getRecipe: (menuItemId: string) =>
@@ -582,34 +642,180 @@ export const garmentApi = {
   // Styles
   styles: () => request<any[]>("/api/garment/styles"),
   createStyle: (data: any) =>
-    request("/api/garment/styles", { method: "POST", body: JSON.stringify(data) }),
+    request("/api/garment/styles", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
 
   // Materials
   materials: () => request<any[]>("/api/garment/materials"),
   createMaterial: (data: any) =>
-    request("/api/garment/materials", { method: "POST", body: JSON.stringify(data) }),
+    request("/api/garment/materials", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
   updateMaterial: (id: string, data: any) =>
-    request(`/api/garment/materials/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    request(`/api/garment/materials/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
 
   // BOM
-  getBOM: (styleId: string) => request<any[]>(`/api/garment/styles/${styleId}/bom`),
-  addBOMItem: (styleId: string, data: { materialId: string; qtyNeeded: number }) =>
+  getBOM: (styleId: string) =>
+    request<any[]>(`/api/garment/styles/${styleId}/bom`),
+  addBOMItem: (
+    styleId: string,
+    data: { materialId: string; qtyNeeded: number }
+  ) =>
     request(`/api/garment/styles/${styleId}/bom`, {
       method: "POST",
       body: JSON.stringify(data),
+    }),
+  deleteBOMItem: (styleId: string, itemId: string) =>
+    request(`/api/garment/styles/${styleId}/bom/${itemId}`, {
+      method: "DELETE",
     }),
 
   // Production Orders
   orders: () => request<any[]>("/api/garment/orders"),
   createOrder: (data: any) =>
-    request("/api/garment/orders", { method: "POST", body: JSON.stringify(data) }),
-  updateStage: (id: string, data: { stage: string; quantity?: number; note?: string }) =>
+    request("/api/garment/orders", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  updateStage: (
+    id: string,
+    data: { stage: string; quantity?: number; note?: string }
+  ) =>
     request(`/api/garment/orders/${id}/stage`, {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
 
-  // Material Check
   materialCheck: (orderId: string) =>
     request<any>(`/api/garment/orders/${orderId}/material-check`),
+
+  // Quality
+  defects: () => request<any[]>("/api/garment/defects"),
+  orderDefects: (orderId: string) =>
+    request<any[]>(`/api/garment/orders/${orderId}/defects`),
+  addDefect: (
+    orderId: string,
+    data: {
+      defectType: string
+      quantity: number
+      stage?: string
+      note?: string
+      estimatedCost?: number
+    }
+  ) =>
+    request(`/api/garment/orders/${orderId}/defects`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  qualitySummary: () => request<any>("/api/garment/quality/summary"),
+
+  // Daily reports
+  dailyReports: (params?: { date?: string; range?: string }) => {
+    const q = new URLSearchParams()
+    if (params?.date) q.set("date", params.date)
+    if (params?.range) q.set("range", params.range)
+    const qs = q.toString()
+    return request<any[]>(
+      `/api/garment/daily-reports${qs ? `?${qs}` : ""}`
+    )
+  },
+  addDailyReport: (data: {
+    orderId?: string
+    stage?: string
+    quantity: number
+    note?: string
+    reportDate?: string
+    updateOrderStage?: boolean
+  }) =>
+    request("/api/garment/daily-reports", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  reports: (params?: { date?: string; range?: string }) => {
+    const q = new URLSearchParams()
+    if (params?.date) q.set("date", params.date)
+    if (params?.range) q.set("range", params.range)
+    const qs = q.toString()
+    return request<any>(`/api/garment/reports${qs ? `?${qs}` : ""}`)
+  },
+
+  moneyLeaks: () => request<any>("/api/garment/money-leaks"),
+
+  // Workers
+  workers: () => request<any[]>("/api/garment/workers"),
+  addWorker: (data: {
+    name: string
+    phone?: string
+    annualLeaveDays?: number
+    usedLeaveDays?: number
+  }) =>
+    request("/api/garment/workers", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  updateWorker: (
+    id: string,
+    data: {
+      name?: string
+      phone?: string
+      annualLeaveDays?: number
+      usedLeaveDays?: number
+    }
+  ) =>
+    request(`/api/garment/workers/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  removeWorker: (id: string) =>
+    request(`/api/garment/workers/${id}`, { method: "DELETE" }),
+
+  // Attendance
+  attendanceStaff: () => request<any[]>("/api/garment/attendance/staff"),
+  attendanceDay: (date: string) =>
+    request<any[]>(`/api/garment/attendance?date=${encodeURIComponent(date)}`),
+  saveAttendance: (data: {
+    userId?: string
+    workerId?: string
+    workDate: string
+    status: string
+    reason?: string
+    note?: string
+  }) =>
+    request("/api/garment/attendance", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  saveAttendanceBulk: (data: {
+    workDate: string
+    marks: {
+      workerId?: string
+      userId?: string
+      status: string
+      reason?: string
+      note?: string
+      useAnnualLeave?: boolean
+    }[]
+  }) =>
+    request<{ saved: number; rows: any[] }>(
+      "/api/garment/attendance/bulk",
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      }
+    ),
+  attendanceSummary: (days = 30) =>
+    request<any>(`/api/garment/attendance/summary?days=${days}`),
+  attendanceHistory: (workerId: string, days = 30) =>
+    request<any>(
+      `/api/garment/attendance/history?workerId=${encodeURIComponent(
+        workerId
+      )}&days=${days}`
+    ),
 }

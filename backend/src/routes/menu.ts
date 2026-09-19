@@ -7,6 +7,38 @@ import { Role } from "@prisma/client"
 const router = Router()
 router.use(authenticate, requireOrganization)
 
+function normalizeCategory(raw?: string | null): string {
+  const t = (raw || "").trim().replace(/\s+/g, " ")
+  if (!t) return "Food"
+  const lower = t.toLowerCase()
+  const presets: Record<string, string> = {
+    food: "Food",
+    drinks: "Drinks",
+    drink: "Drinks",
+    breakfast: "Breakfast",
+    appetizers: "Appetizers",
+    appetizer: "Appetizers",
+    "main course": "Main course",
+    main: "Main course",
+    traditional: "Traditional",
+    "fast food": "Fast food",
+    desserts: "Desserts",
+    dessert: "Desserts",
+    "coffee & tea": "Coffee & tea",
+    coffee: "Coffee & tea",
+    tea: "Coffee & tea",
+    "soft drinks": "Soft drinks",
+    juice: "Juice",
+    alcohol: "Alcohol",
+    specials: "Specials",
+  }
+  if (presets[lower]) return presets[lower]
+  return t
+    .split(" ")
+    .map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
+    .join(" ")
+}
+
 router.get("/", async (req, res) => {
   const organizationId = req.user!.organizationId!
   const availableOnly =
@@ -33,11 +65,11 @@ router.post("/", requireRole(Role.OWNER, Role.MANAGER), async (req, res) => {
       .object({
         name: z.string().min(1),
         nameAm: z.string().optional(),
-        category: z.string().min(1),
+        category: z.string().min(1).optional(),
         price: z.number().positive(),
         description: z.string().optional(),
         imageUrl: z.string().optional().nullable(),
-        available: z.boolean().default(true),
+        available: z.boolean().optional().default(true),
         branchId: z.string().optional().nullable(),
       })
       .parse(req.body)
@@ -58,15 +90,17 @@ router.post("/", requireRole(Role.OWNER, Role.MANAGER), async (req, res) => {
       branchId = main.id
     }
 
+    const category = normalizeCategory(data.category)
+
     const item = await prisma.menuItem.create({
       data: {
-        name: data.name,
-        nameAm: data.nameAm,
-        category: data.category,
+        name: data.name.trim(),
+        nameAm: data.nameAm?.trim() || null,
+        category,
         price: data.price,
         description: data.description,
         imageUrl: data.imageUrl || null,
-        available: data.available,
+        available: data.available ?? true,
         organizationId,
         branchId,
       },
@@ -87,7 +121,7 @@ router.patch("/:id", requireRole(Role.OWNER, Role.MANAGER), async (req, res) => 
       .object({
         name: z.string().min(1).optional(),
         nameAm: z.string().optional().nullable(),
-        category: z.string().optional(),
+        category: z.string().min(1).optional(),
         price: z.number().positive().optional(),
         description: z.string().optional().nullable(),
         imageUrl: z.string().nullable().optional(),
@@ -101,7 +135,20 @@ router.patch("/:id", requireRole(Role.OWNER, Role.MANAGER), async (req, res) => 
 
     const updated = await prisma.menuItem.update({
       where: { id: item.id },
-      data,
+      data: {
+        ...(data.name != null ? { name: data.name.trim() } : {}),
+        ...(data.nameAm !== undefined
+          ? { nameAm: data.nameAm ? data.nameAm.trim() : null }
+          : {}),
+        ...(data.category != null
+          ? { category: normalizeCategory(data.category) }
+          : {}),
+        ...(data.price != null ? { price: data.price } : {}),
+        ...(data.description !== undefined ? { description: data.description } : {}),
+        ...(data.imageUrl !== undefined ? { imageUrl: data.imageUrl } : {}),
+        ...(data.available != null ? { available: data.available } : {}),
+        ...(data.branchId !== undefined ? { branchId: data.branchId } : {}),
+      },
     })
     res.json(updated)
   } catch (err: any) {

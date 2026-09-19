@@ -31,6 +31,11 @@ export default function RestaurantSettings() {
   const [msg, setMsg] = useState("")
   const [saving, setSaving] = useState(false)
 
+  const [switchBusy, setSwitchBusy] = useState(false)
+  const [switchMsg, setSwitchMsg] = useState("")
+  const [accountType, setAccountType] = useState<string>("CAFE")
+  const [typeSwitchedAt, setTypeSwitchedAt] = useState<string | null>(null)
+
   const [showFeedback, setShowFeedback] = useState(false)
   const [feedback, setFeedback] = useState("")
   const [fbMsg, setFbMsg] = useState("")
@@ -61,6 +66,10 @@ export default function RestaurantSettings() {
         setAddress(s.address || "")
         setCity(s.city || "")
         setTin(s.tin || "")
+        setAccountType(
+          s.type || (organization as any)?.type || "CAFE"
+        )
+        setTypeSwitchedAt(s.typeSwitchedAt || null)
       })
       .catch(console.error)
     loadMine()
@@ -289,6 +298,62 @@ export default function RestaurantSettings() {
           </button>
         </form>
 
+        {/* One-time: Café → Restaurant */}
+        {(accountType === "CAFE" || accountType === "cafe") && !typeSwitchedAt ? (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 space-y-3 shadow-sm">
+            <h2 className="text-sm font-semibold text-amber-950">
+              Switch to restaurant account
+            </h2>
+            <p className="text-xs text-amber-900/80 leading-relaxed">
+              Keep all menus, stock, staff and sales. Only the account type and monthly billing
+              change to restaurant. This can be done <strong>only once</strong>.
+            </p>
+            <ul className="text-xs text-amber-900/80 list-disc pl-4 space-y-1">
+              <li>Menus &amp; recipes stay</li>
+              <li>Stock (bar / kitchen / store) stays</li>
+              <li>Staff &amp; history stay</li>
+              <li>Price becomes restaurant plan after switch</li>
+            </ul>
+            {switchMsg ? (
+              <p className="text-sm text-amber-950">{switchMsg}</p>
+            ) : null}
+            <button
+              type="button"
+              disabled={switchBusy}
+              onClick={async () => {
+                if (
+                  !confirm(
+                    "Switch this café to a restaurant account?\n\nMenus and stock will stay.\nBilling will use the restaurant price.\nYou cannot undo this yourself."
+                  )
+                ) {
+                  return
+                }
+                setSwitchBusy(true)
+                setSwitchMsg("")
+                try {
+                  const r = await restaurantApi.switchToRestaurant()
+                  setSwitchMsg(r.message || "Switched to restaurant")
+                  setAccountType("RESTAURANT")
+                  setTypeSwitchedAt(new Date().toISOString())
+                  window.location.reload()
+                } catch (err: any) {
+                  setSwitchMsg(err?.message || err?.error || "Switch failed")
+                } finally {
+                  setSwitchBusy(false)
+                }
+              }}
+              className="w-full bg-amber-900 text-white py-2.5 rounded-xl text-sm font-medium disabled:opacity-50"
+            >
+              {switchBusy ? "..." : "Switch café → restaurant (once)"}
+            </button>
+          </div>
+        ) : accountType === "RESTAURANT" || accountType === "restaurant" ? (
+          <div className="bg-white border border-semay-200 rounded-2xl p-4 text-xs text-semay-600">
+            Account type: <strong>Restaurant</strong>
+            {typeSwitchedAt ? " · switched earlier (locked)" : null}
+          </div>
+        ) : null}
+
         {/* Feedback */}
         <div className="bg-white border border-semay-200 rounded-2xl shadow-sm overflow-hidden">
           <button
@@ -340,7 +405,9 @@ export default function RestaurantSettings() {
         <div className="bg-white border border-semay-200 rounded-2xl p-5 space-y-3 shadow-sm">
           <h2 className="text-sm font-semibold text-semay-900">Your messages</h2>
           {myFeedback.length === 0 ? (
-            <p className="text-xs text-semay-400">No messages yet. Tap “Message Semay” above.</p>
+            <p className="text-xs text-semay-400">
+              No messages yet. Tap “Message Semay” above.
+            </p>
           ) : (
             myFeedback.map((f) => (
               <div key={f.id} className="border border-semay-100 rounded-xl p-3 text-sm">
@@ -427,7 +494,12 @@ export default function RestaurantSettings() {
             <summary className="font-medium text-semay-800 cursor-pointer">Need help?</summary>
             <p className="text-semay-500 mt-1.5 pl-1 leading-relaxed">
               Call {SUPPORT_PHONE}, Telegram{" "}
-              <a href={TELEGRAM} className="text-sky-600 underline" target="_blank" rel="noreferrer">
+              <a
+                href={TELEGRAM}
+                className="text-sky-600 underline"
+                target="_blank"
+                rel="noreferrer"
+              >
                 t.me/semaii_app
               </a>
               , or Message Semay above.

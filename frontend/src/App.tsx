@@ -68,6 +68,15 @@ import GarmentInventory from "./pages/garment/GarmentInventory"
 import GarmentOrders from "./pages/garment/GarmentOrders"
 import GarmentStyles from "./pages/garment/GarmentStyles"
 import GarmentOrderDetail from "./pages/garment/GarmentOrderDetail"
+import GarmentBOM from "./pages/garment/GarmentBOM"
+import GarmentStaff from "./pages/garment/GarmentStaff"
+import GarmentSettings from "./pages/garment/GarmentSettings"
+import GarmentQuality from "./pages/garment/GarmentQuality"
+import GarmentDailyReport from "./pages/garment/GarmentDailyReport"
+import GarmentMoneyLeaks from "./pages/garment/GarmentMoneyLeaks"
+import GarmentReports from "./pages/garment/GarmentReports"
+import GarmentGuide from "./pages/garment/GarmentGuide"
+import GarmentStaffHome from "./pages/garment/GarmentStaffHome"
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, loading } = useAuth()
@@ -189,7 +198,31 @@ export default function App() {
       <Route path="/garment/orders" element={<ProtectedApp><GarmentOrders /></ProtectedApp>} />
       <Route path="/garment/styles" element={<ProtectedApp><GarmentStyles /></ProtectedApp>} />
       <Route path="/garment/orders/:id" element={<ProtectedApp><GarmentOrderDetail /></ProtectedApp>} />
-
+      <Route path="/garment/styles/:styleId/bom" element={<ProtectedApp><GarmentBOM /></ProtectedApp>} />
+      <Route path="/garment/staff" element={<ProtectedApp><GarmentStaff /></ProtectedApp>} />
+      <Route path="/garment/settings" element={<ProtectedApp><GarmentSettings /></ProtectedApp>} />
+      <Route path="/garment/quality" element={<ProtectedApp><GarmentQuality /></ProtectedApp>} />
+      <Route path="/garment/daily-report" element={<ProtectedApp><GarmentDailyReport /></ProtectedApp>} />
+      <Route path="/garment/money-leaks" element={<ProtectedApp><GarmentMoneyLeaks /></ProtectedApp>} />
+      <Route path="/garment/reports" element={<ProtectedApp><GarmentReports /></ProtectedApp>} />
+      <Route path="/garment/guide" element={<ProtectedApp><GarmentGuide /></ProtectedApp>} />
+      <Route
+  path="/garment/staff-home"
+  element={
+    <ProtectedApp>
+      <GarmentStaffHome />
+    </ProtectedApp>
+  }
+/>
+<Route
+  path="/garment/daily"
+  element={
+    <ProtectedApp>
+      <GarmentDailyReport />
+    </ProtectedApp>
+  }
+/>
+      
       {/* Catch-all MUST be last */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

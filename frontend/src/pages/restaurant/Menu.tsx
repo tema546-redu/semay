@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { ArrowLeft, ToggleLeft, ToggleRight, Plus, X, Pencil, Trash2 } from "lucide-react"
@@ -8,12 +8,29 @@ import { cn } from "../../lib/utils"
 const emptyForm = {
   name: "",
   nameAm: "",
-  category: "Food",
+  category: "",
   price: "",
   imageUrl: "",
 }
 
 type RecipeRow = { stockItemId: string; qtyPerSale: string }
+
+/** Only trim spaces — keep the words the owner typed */
+function cleanCategory(raw: string): string {
+  return (raw || "").trim().replace(/\s+/g, " ")
+}
+
+/** For grouping only: same text ignoring case */
+function categoryKey(raw: string): string {
+  const c = cleanCategory(raw)
+  return (c || "Food").toLowerCase()
+}
+
+/** Label to show for a group (prefer first spelling found on items) */
+function categoryLabel(raw: string): string {
+  const c = cleanCategory(raw)
+  return c || "Food"
+}
 
 export default function MenuPage() {
   const { i18n } = useTranslation()
@@ -39,6 +56,23 @@ export default function MenuPage() {
   useEffect(() => {
     load()
   }, [])
+
+  /** Unique categories from saved items (owner-typed) */
+  const cats = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const i of items) {
+      const key = categoryKey(i.category || "Food")
+      if (!map.has(key)) map.set(key, categoryLabel(i.category || "Food"))
+    }
+    return Array.from(map.entries())
+      .sort((a, b) => a[1].localeCompare(b[1]))
+      .map(([key, label]) => ({ key, label }))
+  }, [items])
+
+  /** Suggestions only — still free to type anything */
+  const categoryHints = useMemo(() => {
+    return cats.map((c) => c.label)
+  }, [cats])
 
   const onImage = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -73,7 +107,7 @@ export default function MenuPage() {
     setForm({
       name: item.name || "",
       nameAm: item.nameAm || "",
-      category: item.category || "Food",
+      category: categoryLabel(item.category || ""),
       price: String(item.price ?? ""),
       imageUrl: item.imageUrl || "",
     })
@@ -119,12 +153,16 @@ export default function MenuPage() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.name || !form.price) return
+
+    // What they typed — only fallback to Food if empty
+    const category = cleanCategory(form.category) || "Food"
+
     setSaving(true)
     try {
       const payload = {
-        name: form.name,
-        nameAm: form.nameAm || undefined,
-        category: form.category || "Food",
+        name: form.name.trim(),
+        nameAm: form.nameAm.trim() || undefined,
+        category,
         price: Number(form.price),
         imageUrl: form.imageUrl || null,
       }
@@ -149,8 +187,6 @@ export default function MenuPage() {
       setSaving(false)
     }
   }
-
-  const cats = Array.from(new Set(items.map((i) => i.category)))
 
   return (
     <div className="min-h-svh bg-semay-50 pb-8">
@@ -178,8 +214,8 @@ export default function MenuPage() {
           </h2>
           <p className="text-sm text-semay-500">
             {isAm
-              ? "እቃ + ንጥረ ነገር ከክምችት — POS ሲሸጥ ክምችት ይቀንሳል"
-              : "Add item + ingredients from Stock — POS sales reduce store"}
+              ? "ምድብ እራስዎ ይጻፉ — ተመሳሳይ ስም ያላቸው እቃዎች አንድ ላይ ይታያሉ"
+              : "Type your own categories — items with the same name group together"}
           </p>
           {stockList.length === 0 && (
             <p className="text-xs text-amber-700 mt-2">
@@ -219,14 +255,14 @@ export default function MenuPage() {
             </button>
           </div>
         ) : (
-          cats.map((cat) => (
-            <div key={cat}>
+          cats.map(({ key, label }) => (
+            <div key={key}>
               <h3 className="text-sm font-semibold text-semay-500 uppercase tracking-wide mb-3">
-                {cat}
+                {label}
               </h3>
               <div className="bg-white border border-semay-200 rounded-2xl overflow-hidden divide-y divide-semay-100">
                 {items
-                  .filter((i) => i.category === cat)
+                  .filter((i) => categoryKey(i.category || "Food") === key)
                   .map((item) => (
                     <div
                       key={item.id}
@@ -253,6 +289,10 @@ export default function MenuPage() {
                           </div>
                           <div className="text-xs text-semay-400 mt-0.5">
                             {Number(item.price)} ETB
+                            <span className="text-semay-300">
+                              {" "}
+                              · {categoryLabel(item.category || "")}
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -332,21 +372,45 @@ export default function MenuPage() {
                 onChange={(e) => setForm({ ...form, nameAm: e.target.value })}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-semay-200 text-sm"
               />
+
+              {/* Free-type category — no forced presets */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-semay-600">
+                  {isAm ? "ምድብ (እራስዎ ይጻፉ)" : "Category (type your own)"}
+                </label>
+                <input
+                  list="semay-category-hints"
+                  placeholder={
+                    isAm
+                      ? "ምሳሌ፡ ምግብ፣ መጠጥ፣ ጾም፣ ቡና…"
+                      : "e.g. Food, Drinks, Fasting, Bar…"
+                  }
+                  value={form.category}
+                  onChange={(e) => setForm({ ...form, category: e.target.value })}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-semay-200 text-sm"
+                />
+                <datalist id="semay-category-hints">
+                  {categoryHints.map((h) => (
+                    <option key={h} value={h} />
+                  ))}
+                </datalist>
+                <p className="text-[11px] text-semay-400">
+                  {isAm
+                    ? "የፃፉት ስም ይቀመጣል። ባዶ ከሆነ ብቻ Food ይሆናል። ተመሳሳይ ስም = አንድ ቡድን።"
+                    : "Saved exactly as you type. Empty → Food. Same name = same group."}
+                </p>
+              </div>
+
               <input
-                placeholder="Category"
-                value={form.category}
-                onChange={(e) => setForm({ ...form, category: e.target.value })}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-semay-200 text-sm"
-              />
-              <input
-                required
-                type="number"
-                min="1"
-                placeholder="Price (ETB)"
-                value={form.price}
-                onChange={(e) => setForm({ ...form, price: e.target.value })}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-semay-200 text-sm"
-              />
+  required
+  type="number"
+  min="0.01"
+  step="0.01"
+  placeholder="Price (ETB) e.g. 317.50"
+  value={form.price}
+  onChange={(e) => setForm({ ...form, price: e.target.value })}
+  className="w-full px-3.5 py-2.5 rounded-xl border border-semay-200 text-sm"
+/>
               <div>
                 <label className="text-sm text-semay-600 block mb-1">
                   {isAm ? "ፎቶ" : "Photo"}
@@ -370,7 +434,6 @@ export default function MenuPage() {
                 )}
               </div>
 
-              {/* Ingredients from Stock */}
               <div className="border border-semay-100 rounded-xl p-3 space-y-2 bg-semay-50/50">
                 <div className="text-sm font-medium text-semay-800">
                   {isAm ? "ንጥረ ነገር (ለ 1 ምግብ)" : "Ingredients (for 1 sale)"}
@@ -391,9 +454,7 @@ export default function MenuPage() {
                       }}
                       className="flex-1 px-2 py-2 rounded-lg border border-semay-200 text-sm"
                     >
-                      <option value="">
-                        {isAm ? "ከክምችት ምረጥ" : "From stock…"}
-                      </option>
+                      <option value="">{isAm ? "ከክምችት ምረጥ" : "From stock…"}</option>
                       {stockList.map((s) => (
                         <option key={s.id} value={s.id}>
                           {s.name} ({s.quantity} {s.unit})

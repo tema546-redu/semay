@@ -192,6 +192,8 @@ router.get("/settings", async (req, res) => {
     city: (org as any)?.city ?? null,
     tin: (org as any)?.tin ?? null,
     photoUrl: (org as any)?.photoUrl ?? null,
+    type: org?.type ?? null,
+    typeSwitchedAt: (org as any)?.typeSwitchedAt ?? null,
   })
 })
 
@@ -936,4 +938,62 @@ router.delete("/expenses/:id", requireRole(Role.OWNER, Role.MANAGER), async (req
   res.json({ ok: true })
 })
 
+// POST /api/restaurant/switch-type
+router.post(
+  "/switch-type",
+  requireRole(Role.OWNER),
+  async (req, res) => {
+    try {
+      const organizationId = req.user!.organizationId!
+      const confirm = req.body?.confirm === true
+      if (!confirm) {
+        return res.status(400).json({ error: "confirm must be true" })
+      }
+
+      const org = await prisma.organization.findUnique({
+        where: { id: organizationId },
+      })
+      if (!org) return res.status(404).json({ error: "Not found" })
+
+      if (org.type === "RESTAURANT") {
+        return res.status(400).json({ error: "Already a restaurant account" })
+      }
+
+      if ((org as any).typeSwitchedAt) {
+        return res.status(400).json({
+          error: "Account type was already switched once",
+        })
+      }
+
+      if (org.type !== "CAFE") {
+        return res.status(400).json({
+          error: `Can only switch from CAFE (current: ${org.type})`,
+        })
+      }
+
+      await prisma.organization.update({
+        where: { id: organizationId },
+        data: {
+          type: "RESTAURANT",
+          typeSwitchedAt: new Date(),
+        } as any,
+      })
+
+      const check = await prisma.organization.findUnique({
+        where: { id: organizationId },
+      })
+
+      res.json({
+        ok: true,
+        type: check?.type,
+        typeSwitchedAt: (check as any)?.typeSwitchedAt,
+        message:
+          "Switched to restaurant. Menus and stock kept. Billing uses restaurant rate.",
+      })
+    } catch (e: any) {
+      console.error("switch-type", e)
+      res.status(500).json({ error: e.message || "Failed" })
+    }
+  }
+)
 export default router

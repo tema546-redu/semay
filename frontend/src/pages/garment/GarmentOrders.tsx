@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
 import { garmentApi } from "../../lib/api"
 import { ArrowLeft, Plus } from "lucide-react"
-import GarmentBottomNav from "../../components/GarmentBottomNav"
+import GarmentLayout from "../../components/GarmentLayout"
 
 export default function GarmentOrders() {
   const { i18n } = useTranslation()
@@ -63,6 +63,7 @@ export default function GarmentOrders() {
   }
 
   return (
+    <GarmentLayout>
     <div className="min-h-svh bg-semay-50 pb-24">
       <div className="bg-white border-b border-semay-200 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -159,8 +160,7 @@ export default function GarmentOrders() {
           </div>
         </div>
       )}
-
-      <GarmentBottomNav />
     </div>
+    </GarmentLayout>
   )
 }

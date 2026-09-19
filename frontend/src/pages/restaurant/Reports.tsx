@@ -99,6 +99,16 @@ function formatDayLabel(iso: string) {
   }
 }
 
+/** Prices treated as VAT-inclusive 15% (common in ET). Change TAX_RATE if needed. */
+const TAX_RATE = 0.15
+
+function money(n: number) {
+  return Number(n || 0).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+}
+
 function printOrderReceipt(opts: {
   orgName: string
   address?: string
@@ -108,7 +118,7 @@ function printOrderReceipt(opts: {
   order: PayOrder
   isCopy: boolean
 }) {
-  const w = window.open("", "_blank", "width=360,height=780")
+  const w = window.open("", "_blank", "width=360,height=820")
   if (!w) {
     alert("Allow pop-ups to print receipt")
     return
@@ -118,62 +128,73 @@ function printOrderReceipt(opts: {
   const publicUrl = receiptPublicUrl(code)
   const qr = qrImgUrl(publicUrl)
   const items = o.items || []
+
+  const total = Number(o.total) || 0
+  // VAT inclusive: total = net + tax
+  const net = total / (1 + TAX_RATE)
+  const tax = total - net
+
   const lines = items.length
     ? items
-        .map(
-          (i) =>
-            `<tr><td>${i.quantity}× ${escapeHtml(i.name)}</td><td style="text-align:right">${(
-              Number(i.price) * i.quantity
-            ).toLocaleString()}</td></tr>`
-        )
+        .map((i) => {
+          const line = Number(i.price) * i.quantity
+          return `<tr>
+            <td>${i.quantity}× ${escapeHtml(i.name)}</td>
+            <td style="text-align:right">${money(line)}</td>
+          </tr>`
+        })
         .join("")
-    : `<tr><td colspan="2">Order total</td></tr>`
-  const method = METHOD_LABELS[o.paymentMethod || ""] || o.paymentMethod || "—"
-  const copyBanner = opts.isCopy
-    ? `<div class="c" style="font-weight:700;border:2px solid #000;padding:4px;margin:6px 0">*** COPY — NOT FOR SCAN ***</div>`
-    : `<div class="c"><b>*** OFFICIAL RECEIPT ***</b></div>`
+    : `<tr><td colspan="2">Order</td></tr>`
 
-  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Receipt ${code}</title>
+  const method = METHOD_LABELS[o.paymentMethod || ""] || o.paymentMethod || "—"
+  const isCash = (o.paymentMethod || "").toLowerCase() === "cash"
+
+  const banner = opts.isCopy
+    ? `<div class="c banner">*** COPY — NOT FOR SCAN ***</div>`
+    : isCash
+      ? `<div class="c banner"><b>CASH INVOICE</b></div>`
+      : `<div class="c banner"><b>OFFICIAL RECEIPT</b></div>`
+
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Invoice ${code}</title>
 <style>
   @page { margin: 4mm; size: 80mm auto; }
-  body { font-family: ui-monospace, Consolas, monospace; font-size: 12px; width: 72mm; margin: 0 auto; color: #000; }
+  body { font-family: ui-monospace, Consolas, monospace; font-size: 11px; width: 72mm; margin: 0 auto; color: #000; }
   .c { text-align: center; }
-  .sep { border-top: 1px dashed #000; margin: 8px 0; }
+  .banner { font-weight: 700; border: 1px solid #000; padding: 4px; margin: 6px 0; }
+  .sep { border-top: 1px dashed #000; margin: 6px 0; }
   table { width: 100%; border-collapse: collapse; }
   td { padding: 2px 0; vertical-align: top; }
-  img.qr { width: 120px; height: 120px; margin: 6px auto; display: block; }
+  .tot td { padding-top: 4px; }
+  img.qr { width: 110px; height: 110px; margin: 6px auto; display: block; }
   @media print { button { display: none; } }
 </style></head><body>
   <div class="c"><b>${escapeHtml(opts.orgName)}</b></div>
   ${opts.address ? `<div class="c">${escapeHtml(opts.address)}${opts.city ? ", " + escapeHtml(opts.city) : ""}</div>` : ""}
   ${opts.phone ? `<div class="c">Tel: ${escapeHtml(opts.phone)}</div>` : ""}
   ${opts.tin ? `<div class="c">TIN: ${escapeHtml(opts.tin)}</div>` : ""}
-  ${copyBanner}
+  ${banner}
   <div class="sep"></div>
-  <div>Code: <b>${escapeHtml(code)}</b></div>
+  <div>Invoice / Code: <b>${escapeHtml(code)}</b></div>
   <div>Order: ${escapeHtml(String(o.id).slice(-10))}</div>
   <div>Table: ${escapeHtml(o.tableNumber)}</div>
   <div>Date: ${new Date(o.paidAt || o.createdAt).toLocaleString()}</div>
-  ${o.staffName ? `<div>Staff: ${escapeHtml(o.staffName)}</div>` : ""}
+  ${o.staffName ? `<div>Cashier: ${escapeHtml(o.staffName)}</div>` : ""}
   <div class="sep"></div>
   <table>${lines}</table>
   <div class="sep"></div>
-  <div style="display:flex;justify-content:space-between"><b>TOTAL</b><b>${Number(o.total).toLocaleString()} ETB</b></div>
-  <div>Payment: ${escapeHtml(String(method))}</div>
+  <table>
+    <tr><td>Subtotal (excl. VAT)</td><td style="text-align:right">${money(net)}</td></tr>
+    <tr><td>VAT 15%</td><td style="text-align:right">${money(tax)}</td></tr>
+    <tr class="tot"><td><b>TOTAL</b></td><td style="text-align:right"><b>${money(total)} ETB</b></td></tr>
+  </table>
   <div class="sep"></div>
-  ${
-    opts.isCopy
-      ? `<div class="c" style="font-size:10px">COPY — staff second scan blocked in app</div>`
-      : `<div class="c" style="font-size:10px">OFFICIAL RECEIPT</div>`
-  }
-  <div class="c" style="font-size:9px">Customer: camera → view receipt</div>
-  <div class="c" style="font-size:9px">Staff (logged in): open link → auto-scan once</div>
+  <div><b>Payment:</b> ${escapeHtml(String(method))}${isCash ? " · CASH" : ""}</div>
+  <div class="sep"></div>
+  <div class="c" style="font-size:9px">Prices include VAT 15% · Management receipt</div>
+  <div class="c" style="font-size:9px">*** NON-FISCAL — not ERCA device ***</div>
   <img class="qr" src="${qr}" alt="QR"/>
   <div class="c"><b>${escapeHtml(code)}</b></div>
-  <div class="sep"></div>
-  <div class="c">Thank you</div>
-  <div class="c">semaiy.netlify.app</div>
-  <div class="c">*** NON-FISCAL ***</div>
+  <div class="c">Thank you · semaiy.netlify.app</div>
   <script>window.onload=function(){setTimeout(function(){window.print()},300)}</script>
 </body></html>`)
   w.document.close()
