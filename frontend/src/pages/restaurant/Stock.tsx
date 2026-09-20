@@ -176,7 +176,10 @@ export default function Stock() {
   const [editUnitCost, setEditUnitCost] = useState("")
   const [editNote, setEditNote] = useState("")
   const [editUnit, setEditUnit] = useState("kg")
-  const [moveId, setMoveId] = useState<string | null>(null)
+
+    const [moveId, setMoveId] = useState<string | null>(null)
+  const [moveQty, setMoveQty] = useState("")
+  const [moveFull, setMoveFull] = useState(true)
 
   const [activeId, setActiveId] = useState<string | null>(null)
   const [mode, setMode] = useState<Mode>(null)
@@ -374,15 +377,23 @@ export default function Stock() {
     }
   }
 
-  const moveLocation = async (
+    const moveLocation = async (
     id: string,
-    to: "BAR" | "KITCHEN" | "STORE"
+    to: "BAR" | "KITCHEN" | "STORE",
+    _item?: any
   ) => {
     setBusy(true)
     try {
-      await stockApi.update(id, { location: to })
+      await stockApi.transfer(id, {
+        toLocation: to,
+        full: moveFull,
+        amount: moveFull ? undefined : Number(moveQty),
+      })
       setMoveId(null)
+      setMoveQty("")
+      setMoveFull(true)
       load()
+      if (tab === "report") loadReport()
     } catch (e: any) {
       alert(e?.message || "Move failed")
     } finally {
@@ -912,9 +923,14 @@ export default function Stock() {
                         </button>
                         <button
                           type="button"
-                          onClick={() =>
+                          onClick={() => {
                             setMoveId(moveId === x.id ? null : x.id)
-                          }
+                            setMoveFull(true)
+                            setMoveQty("")
+                            setEditId(null)
+                            setActiveId(null)
+                            setMode(null)
+                          }}
                           className="text-xs text-violet-600 underline"
                         >
                           Move
@@ -999,30 +1015,79 @@ export default function Stock() {
                       </div>
                     )}
 
-                    {moveId === x.id && (
-                      <div className="flex flex-wrap gap-2 text-xs bg-violet-50 border border-violet-100 rounded-xl p-2">
-                        <span className="text-violet-800 w-full">Move to:</span>
-                        {(["BAR", "KITCHEN", "STORE"] as const)
-                          .filter((loc) => loc !== location)
-                          .map((loc) => (
-                            <button
-                              key={loc}
-                              type="button"
-                              disabled={busy}
-                              onClick={() => moveLocation(x.id, loc)}
-                              className="px-2.5 py-1 rounded-lg bg-white border border-violet-200 text-violet-900 disabled:opacity-60"
-                            >
-                              {loc === "BAR"
-                                ? "Bar"
-                                : loc === "KITCHEN"
-                                  ? "Kitchen"
-                                  : "Store"}
-                            </button>
-                          ))}
+                                       {moveId === x.id && (
+                      <div className="space-y-2 text-xs bg-violet-50 border border-violet-100 rounded-xl p-3">
+                        <div className="font-medium text-violet-900">
+                          Move {x.name} ({Number(x.quantity)} {x.unit})
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMoveFull(true)
+                              setMoveQty("")
+                            }}
+                            className={cn(
+                              "flex-1 py-1.5 rounded-lg border",
+                              moveFull
+                                ? "bg-violet-900 text-white border-violet-900"
+                                : "bg-white text-violet-900"
+                            )}
+                          >
+                            Full
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setMoveFull(false)}
+                            className={cn(
+                              "flex-1 py-1.5 rounded-lg border",
+                              !moveFull
+                                ? "bg-violet-900 text-white border-violet-900"
+                                : "bg-white text-violet-900"
+                            )}
+                          >
+                            Partial
+                          </button>
+                        </div>
+                        {!moveFull && (
+                          <input
+                            type="number"
+                            min="0.001"
+                            step="0.001"
+                            placeholder={`Qty ${x.unit}`}
+                            value={moveQty}
+                            onChange={(e) => setMoveQty(e.target.value)}
+                            className="w-full px-2 py-1.5 rounded-lg border text-sm"
+                          />
+                        )}
+                        <div className="text-violet-800">To:</div>
+                        <div className="flex flex-wrap gap-2">
+                          {(["BAR", "KITCHEN", "STORE"] as const)
+                            .filter((loc) => loc !== location)
+                            .map((loc) => (
+                              <button
+                                key={loc}
+                                type="button"
+                                disabled={
+                                  busy ||
+                                  (!moveFull &&
+                                    (!moveQty || Number(moveQty) <= 0))
+                                }
+                                onClick={() => moveLocation(x.id, loc, x)}
+                                className="px-2.5 py-1 rounded-lg bg-white border border-violet-200 text-violet-900 disabled:opacity-50"
+                              >
+                                {LOCATION_LABEL[loc]}
+                              </button>
+                            ))}
+                        </div>
                         <button
                           type="button"
-                          onClick={() => setMoveId(null)}
-                          className="px-2 py-1 text-slate-500"
+                          onClick={() => {
+                            setMoveId(null)
+                            setMoveQty("")
+                            setMoveFull(true)
+                          }}
+                          className="text-slate-500"
                         >
                           Cancel
                         </button>

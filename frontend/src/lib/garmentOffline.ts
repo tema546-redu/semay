@@ -113,6 +113,7 @@ export function isOnline() {
 
 export function authHeaders(): Record<string, string> {
   const token =
+    localStorage.getItem("semay_token") ||
     localStorage.getItem("token") ||
     localStorage.getItem("accessToken") ||
     localStorage.getItem("jwt") ||

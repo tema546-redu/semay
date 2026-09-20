@@ -11,6 +11,7 @@ const emptyForm = {
   category: "",
   price: "",
   imageUrl: "",
+  station: "KITCHEN" as "KITCHEN" | "BAR",
 }
 
 type RecipeRow = { stockItemId: string; qtyPerSale: string }
@@ -110,6 +111,7 @@ export default function MenuPage() {
       category: categoryLabel(item.category || ""),
       price: String(item.price ?? ""),
       imageUrl: item.imageUrl || "",
+      station: item.station === "BAR" ? "BAR" : "KITCHEN",
     })
     try {
       const lines = await stockApi.getRecipe(item.id)
@@ -165,6 +167,7 @@ export default function MenuPage() {
         category,
         price: Number(form.price),
         imageUrl: form.imageUrl || null,
+        station: form.station || "KITCHEN",
       }
       let id = editingId
       if (editingId) {
@@ -287,11 +290,13 @@ export default function MenuPage() {
                           >
                             {isAm && item.nameAm ? item.nameAm : item.name}
                           </div>
-                          <div className="text-xs text-semay-400 mt-0.5">
+                                                    <div className="text-xs text-semay-400 mt-0.5">
                             {Number(item.price)} ETB
                             <span className="text-semay-300">
                               {" "}
                               · {categoryLabel(item.category || "")}
+                              {" · "}
+                              {item.station === "BAR" ? "Bar" : "Kitchen"}
                             </span>
                           </div>
                         </div>
@@ -400,7 +405,37 @@ export default function MenuPage() {
                     : "Saved exactly as you type. Empty → Food. Same name = same group."}
                 </p>
               </div>
-
+                               <div className="space-y-1.5">
+                <label className="text-xs font-medium text-semay-600">
+                  Station (display)
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, station: "KITCHEN" })}
+                    className={cn(
+                      "flex-1 py-2 rounded-xl text-sm border",
+                      form.station === "KITCHEN"
+                        ? "bg-semay-900 text-white border-semay-900"
+                        : "border-semay-200"
+                    )}
+                  >
+                    Kitchen
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, station: "BAR" })}
+                    className={cn(
+                      "flex-1 py-2 rounded-xl text-sm border",
+                      form.station === "BAR"
+                        ? "bg-semay-900 text-white border-semay-900"
+                        : "border-semay-200"
+                    )}
+                  >
+                    Bar
+                  </button>
+                </div>
+              </div>
               <input
   required
   type="number"

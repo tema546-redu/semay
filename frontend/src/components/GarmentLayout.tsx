@@ -102,7 +102,10 @@ export default function GarmentLayout({
       {/* Desktop sidebar */}
       <aside className="hidden md:flex md:w-56 lg:w-60 flex-col border-r border-semay-200 bg-white">
         <div className="p-4 border-b border-semay-100">
-          <Link to={staffOnly ? "/garment/staff-home" : "/garment/dashboard"} className="flex items-center gap-2">
+         <Link
+   to={staffOnly ? "/garment/staff-home" : "/garment"}
+  className="flex items-center gap-2"
+>
             <div className="w-8 h-8 rounded-lg bg-semay-900 text-white flex items-center justify-center text-sm font-bold">
               S
             </div>

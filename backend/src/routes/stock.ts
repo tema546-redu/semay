@@ -524,6 +524,288 @@ router.get("/:id/movements", async (req, res) => {
   }
 })
 
+
+/** Transfer qty (partial or full) to another location — logs OUT on source + IN on target */
+router.post(
+  "/:id/transfer",
+  requireRole(Role.OWNER, Role.MANAGER),
+  async (req, res) => {
+    try {
+      const id = String(req.params.id)
+      const organizationId = req.user!.organizationId!
+      const userId = userIdOf(req)
+      const body = z
+        .object({
+          toLocation: z.enum(["BAR", "KITCHEN", "STORE"]),
+          /** if true, move all remaining qty */
+          full: z.boolean().optional().default(false),
+          amount: z.number().positive().optional(),
+          note: z.string().optional(),
+        })
+        .parse(req.body)
+
+      const source = await prisma.stockItem.findFirst({
+        where: { id, organizationId },
+      })
+      if (!source) return res.status(404).json({ error: "Not found" })
+
+      const fromLoc = source.location || "STORE"
+      if (body.toLocation === fromLoc) {
+        return res.status(400).json({ error: "Already in that location" })
+      }
+
+      const current = Number(source.quantity)
+      const amount = body.full ? current : Number(body.amount || 0)
+      if (!amount || amount <= 0) {
+        return res.status(400).json({ error: "Enter amount or choose Full" })
+      }
+      if (amount > current) {
+        return res.status(400).json({
+          error: `Only ${current} ${source.unit} available`,
+        })
+      }
+
+      const noteBase =
+        body.note?.trim() ||
+        `Transfer ${fromLoc} → ${body.toLocation}`
+
+      const result = await prisma.$transaction(async (tx) => {
+        const newSourceQty = current - amount
+
+        const updatedSource = await tx.stockItem.update({
+          where: { id },
+          data: { quantity: newSourceQty },
+        })
+
+        await tx.stockMovement.create({
+          data: {
+            organizationId,
+            stockItemId: id,
+            type: "OUT",
+            quantity: amount,
+            balanceAfter: newSourceQty,
+            note: noteBase,
+            userId,
+          },
+        })
+
+        // Same name + unit at target location, or create
+        let target = await tx.stockItem.findFirst({
+          where: {
+            organizationId,
+            name: source.name,
+            unit: source.unit,
+            location: body.toLocation,
+          },
+        })
+
+        if (!target) {
+          target = await tx.stockItem.create({
+            data: {
+              organizationId,
+              name: source.name,
+              unit: source.unit,
+              quantity: amount,
+              lowAt: source.lowAt,
+              unitCost: source.unitCost,
+              note: source.note,
+              location: body.toLocation,
+              branchId: source.branchId,
+            },
+          })
+          await tx.stockMovement.create({
+            data: {
+              organizationId,
+              stockItemId: target.id,
+              type: "IN",
+              quantity: amount,
+              balanceAfter: amount,
+              note: noteBase,
+              userId,
+            },
+          })
+        } else {
+          const tQty = Number(target.quantity) + amount
+          target = await tx.stockItem.update({
+            where: { id: target.id },
+            data: {
+              quantity: tQty,
+              ...(source.unitCost != null && target.unitCost == null
+                ? { unitCost: source.unitCost }
+                : {}),
+            },
+          })
+          await tx.stockMovement.create({
+            data: {
+              organizationId,
+              stockItemId: target.id,
+              type: "IN",
+              quantity: amount,
+              balanceAfter: tQty,
+              note: noteBase,
+              userId,
+            },
+          })
+        }
+
+        return { source: updatedSource, target, amount }
+      })
+
+      res.json({
+        ok: true,
+        amount: result.amount,
+        from: fromLoc,
+        to: body.toLocation,
+        source: mapItem(result.source),
+        target: mapItem(result.target),
+      })
+    } catch (e: any) {
+      if (e.name === "ZodError") return res.status(400).json({ error: e.errors })
+      console.error("stock transfer", e)
+      res.status(500).json({ error: e.message || "Failed" })
+    }
+  }
+)
+
+/** Transfer qty (partial or full) to another location */
+router.post(
+  "/:id/transfer",
+  requireRole(Role.OWNER, Role.MANAGER),
+  async (req, res) => {
+    try {
+      const id = String(req.params.id)
+      const organizationId = req.user!.organizationId!
+      const userId = userIdOf(req)
+      const body = z
+        .object({
+          toLocation: z.enum(["BAR", "KITCHEN", "STORE"]),
+          full: z.boolean().optional().default(false),
+          amount: z.number().positive().optional(),
+          note: z.string().optional(),
+        })
+        .parse(req.body)
+
+      const source = await prisma.stockItem.findFirst({
+        where: { id, organizationId },
+      })
+      if (!source) return res.status(404).json({ error: "Not found" })
+
+      const fromLoc = source.location || "STORE"
+      if (body.toLocation === fromLoc) {
+        return res.status(400).json({ error: "Already in that location" })
+      }
+
+      const current = Number(source.quantity)
+      const amount = body.full ? current : Number(body.amount || 0)
+      if (!amount || amount <= 0) {
+        return res.status(400).json({ error: "Enter amount or choose Full" })
+      }
+      if (amount > current) {
+        return res.status(400).json({
+          error: `Only ${current} ${source.unit} available`,
+        })
+      }
+
+      const noteBase =
+        body.note?.trim() || `Transfer ${fromLoc} → ${body.toLocation}`
+
+      const result = await prisma.$transaction(async (tx) => {
+        const newSourceQty = current - amount
+
+        const updatedSource = await tx.stockItem.update({
+          where: { id },
+          data: { quantity: newSourceQty },
+        })
+
+        await tx.stockMovement.create({
+          data: {
+            organizationId,
+            stockItemId: id,
+            type: "OUT",
+            quantity: amount,
+            balanceAfter: newSourceQty,
+            note: noteBase,
+            userId,
+          },
+        })
+
+        let target = await tx.stockItem.findFirst({
+          where: {
+            organizationId,
+            name: source.name,
+            unit: source.unit,
+            location: body.toLocation,
+          },
+        })
+
+        if (!target) {
+          target = await tx.stockItem.create({
+            data: {
+              organizationId,
+              name: source.name,
+              unit: source.unit,
+              quantity: amount,
+              lowAt: source.lowAt,
+              unitCost: source.unitCost,
+              note: source.note,
+              location: body.toLocation,
+              branchId: source.branchId,
+            },
+          })
+          await tx.stockMovement.create({
+            data: {
+              organizationId,
+              stockItemId: target.id,
+              type: "IN",
+              quantity: amount,
+              balanceAfter: amount,
+              note: noteBase,
+              userId,
+            },
+          })
+        } else {
+          const tQty = Number(target.quantity) + amount
+          target = await tx.stockItem.update({
+            where: { id: target.id },
+            data: {
+              quantity: tQty,
+              ...(source.unitCost != null && target.unitCost == null
+                ? { unitCost: source.unitCost }
+                : {}),
+            },
+          })
+          await tx.stockMovement.create({
+            data: {
+              organizationId,
+              stockItemId: target.id,
+              type: "IN",
+              quantity: amount,
+              balanceAfter: tQty,
+              note: noteBase,
+              userId,
+            },
+          })
+        }
+
+        return { source: updatedSource, target, amount }
+      })
+
+      res.json({
+        ok: true,
+        amount: result.amount,
+        from: fromLoc,
+        to: body.toLocation,
+        source: mapItem(result.source),
+        target: mapItem(result.target),
+      })
+    } catch (e: any) {
+      if (e.name === "ZodError") return res.status(400).json({ error: e.errors })
+      console.error("stock transfer", e)
+      res.status(500).json({ error: e.message || "Failed" })
+    }
+  }
+)
+
 router.patch("/:id", requireRole(Role.OWNER, Role.MANAGER), async (req, res) => {
   try {
     const id = String(req.params.id)

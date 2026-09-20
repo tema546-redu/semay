@@ -66,6 +66,7 @@ router.post("/public/:orgId/order", async (req, res) => {
       .object({
         tableNumber: z.string().min(1),
         customerName: z.string().optional(),
+        customerPhone: z.string().optional(),
         items: z
           .array(
             z.object({
@@ -85,15 +86,68 @@ router.post("/public/:orgId/order", async (req, res) => {
     if (!org) return res.status(404).json({ error: "Not found" })
 
     const total = data.items.reduce((s, i) => s + i.price * i.quantity, 0)
+    const table = String(data.tableNumber).trim()
+    const customerName = data.customerName
+      ? String(data.customerName).trim()
+      : null
+    const customerPhone = data.customerPhone
+      ? String(data.customerPhone).trim()
+      : null
+
+    const existing = await prisma.order.findFirst({
+      where: {
+        organizationId: orgId,
+        tableNumber: table,
+        status: {
+          in: [
+            OrderStatus.OPEN,
+            OrderStatus.SENT,
+            OrderStatus.PREPARING,
+            OrderStatus.READY,
+          ],
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    })
+
+    if (existing) {
+      const addTotal = data.items.reduce((s, i) => s + i.price * i.quantity, 0)
+
+      const order = await prisma.order.update({
+        where: { id: existing.id },
+        data: {
+          total: Number(existing.total) + addTotal,
+          status: OrderStatus.OPEN,
+          customerName: customerName ?? (existing as any).customerName,
+          customerPhone: customerPhone ?? (existing as any).customerPhone,
+          items: {
+            create: data.items.map((item) => ({
+              name: item.name,
+              quantity: item.quantity,
+              price: item.price,
+              menuItemId: item.menuItemId,
+            })),
+          },
+        } as any,
+        include: { items: true },
+      })
+      return res.status(201).json({
+        ...order,
+        message: "Added to table bill — waiting for staff to accept",
+        isRequest: true,
+      })
+    }
 
     const order = await prisma.order.create({
       data: {
-        tableNumber: data.tableNumber,
-        status: OrderStatus.SENT,
+        tableNumber: table,
+        status: OrderStatus.OPEN,
         total,
         organizationId: orgId,
         receiptCode: makeReceiptCode(),
         receiptToken: makeReceiptToken(),
+        customerName,
+        customerPhone,
         items: {
           create: data.items.map((item) => ({
             name: item.name,
@@ -106,7 +160,11 @@ router.post("/public/:orgId/order", async (req, res) => {
       include: { items: true },
     })
 
-    res.status(201).json(order)
+    res.status(201).json({
+      ...order,
+      message: "Request sent — waiting for staff to accept",
+      isRequest: true,
+    })
   } catch (e: any) {
     if (e.name === "ZodError") return res.status(400).json({ error: e.errors })
     console.error(e)

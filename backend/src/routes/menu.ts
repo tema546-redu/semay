@@ -71,6 +71,7 @@ router.post("/", requireRole(Role.OWNER, Role.MANAGER), async (req, res) => {
         imageUrl: z.string().optional().nullable(),
         available: z.boolean().optional().default(true),
         branchId: z.string().optional().nullable(),
+        station: z.enum(["KITCHEN", "BAR"]).optional(),
       })
       .parse(req.body)
 
@@ -101,6 +102,7 @@ router.post("/", requireRole(Role.OWNER, Role.MANAGER), async (req, res) => {
         description: data.description,
         imageUrl: data.imageUrl || null,
         available: data.available ?? true,
+        station: data.station || "KITCHEN",
         organizationId,
         branchId,
       },
@@ -127,6 +129,7 @@ router.patch("/:id", requireRole(Role.OWNER, Role.MANAGER), async (req, res) => 
         imageUrl: z.string().nullable().optional(),
         available: z.boolean().optional(),
         branchId: z.string().optional().nullable(),
+        station: z.enum(["KITCHEN", "BAR"]).optional(),
       })
       .parse(req.body)
 
@@ -148,6 +151,7 @@ router.patch("/:id", requireRole(Role.OWNER, Role.MANAGER), async (req, res) => 
         ...(data.imageUrl !== undefined ? { imageUrl: data.imageUrl } : {}),
         ...(data.available != null ? { available: data.available } : {}),
         ...(data.branchId !== undefined ? { branchId: data.branchId } : {}),
+        ...(data.station != null ? { station: data.station } : {}),
       },
     })
     res.json(updated)

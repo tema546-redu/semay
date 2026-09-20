@@ -100,7 +100,7 @@ router.post("/", requireRole(Role.OWNER, Role.MANAGER, Role.WAITER, Role.STAFF),
   }
 })
 
-// ——— Kitchen active tickets ———
+// ——— Kitchen / Bar active tickets ———
 router.get("/active", async (req, res) => {
   const organizationId = req.user!.organizationId!
   const orders = await prisma.order.findMany({
@@ -108,11 +108,114 @@ router.get("/active", async (req, res) => {
       organizationId,
       status: { in: [OrderStatus.SENT, OrderStatus.PREPARING, OrderStatus.READY] },
     },
-    include: { items: true, staff: { select: { id: true, name: true } } },
+    include: {
+      items: {
+        include: {
+          menuItem: {
+            select: { id: true, station: true, name: true },
+          },
+        },
+      },
+      staff: { select: { id: true, name: true } },
+    },
     orderBy: { createdAt: "asc" },
   })
   res.json(orders)
 })
+
+// ——— Customer / QR requests waiting for accept ———
+router.get("/requests", async (req, res) => {
+  try {
+    const organizationId = req.user!.organizationId!
+    const orders = await prisma.order.findMany({
+      where: {
+        organizationId,
+        status: OrderStatus.OPEN,
+      },
+      include: {
+        items: {
+          include: {
+            menuItem: {
+              select: { id: true, station: true, name: true },
+            },
+          },
+        },
+        staff: { select: { id: true, name: true } },
+      },
+      orderBy: { createdAt: "asc" },
+      take: 50,
+    })
+    res.json(orders)
+  } catch (e) {
+    console.error("orders/requests", e)
+    res.status(500).json({ error: "Failed" })
+  }
+})
+
+/** Accept request → send to Kitchen / Bar displays */
+router.post(
+  "/:id/accept",
+  requireRole(Role.OWNER, Role.MANAGER, Role.WAITER, Role.STAFF),
+  async (req, res) => {
+    try {
+      const organizationId = req.user!.organizationId!
+      const id = String(req.params.id)
+      const existing = await prisma.order.findFirst({
+        where: { id, organizationId, status: OrderStatus.OPEN },
+      })
+      if (!existing) {
+        return res.status(404).json({ error: "Request not found or already accepted" })
+      }
+      const order = await prisma.order.update({
+        where: { id },
+        data: {
+          status: OrderStatus.SENT,
+          staffId: req.user!.userId,
+        },
+        include: {
+          items: {
+            include: {
+              menuItem: {
+                select: { id: true, station: true, name: true },
+              },
+            },
+          },
+          staff: { select: { id: true, name: true } },
+        },
+      })
+      res.json(order)
+    } catch (e: any) {
+      console.error("accept", e)
+      res.status(500).json({ error: e.message || "Failed" })
+    }
+  }
+)
+
+/** Optional: reject request */
+router.post(
+  "/:id/reject",
+  requireRole(Role.OWNER, Role.MANAGER, Role.WAITER, Role.STAFF),
+  async (req, res) => {
+    try {
+      const organizationId = req.user!.organizationId!
+      const id = String(req.params.id)
+      const existing = await prisma.order.findFirst({
+        where: { id, organizationId, status: OrderStatus.OPEN },
+      })
+      if (!existing) {
+        return res.status(404).json({ error: "Request not found" })
+      }
+      const order = await prisma.order.update({
+        where: { id },
+        data: { status: OrderStatus.CANCELLED },
+        include: { items: true },
+      })
+      res.json(order)
+    } catch (e: any) {
+      res.status(500).json({ error: e.message || "Failed" })
+    }
+  }
+)
 
 // ——— Open orders for a table (add-more) — MUST be before /:id routes ———
 router.get("/open", async (req, res) => {
@@ -132,7 +235,13 @@ router.get("/open", async (req, res) => {
       orderBy: { createdAt: "desc" },
       take: 20,
       include: {
-        items: true,
+        items: {
+          include: {
+            menuItem: {
+              select: { id: true, station: true, name: true },
+            },
+          },
+        },
         staff: { select: { id: true, name: true } },
       },
     })

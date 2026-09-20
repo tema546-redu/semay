@@ -82,6 +82,17 @@ export const ordersApi = {
   create: (payload: any) =>
     request<any>("/api/orders", { method: "POST", body: JSON.stringify(payload) }),
   active: () => request<any[]>("/api/orders/active"),
+    requests: () => request<any[]>("/api/orders/requests"),
+  accept: (id: string) =>
+    request<any>(`/api/orders/${id}/accept`, {
+      method: "POST",
+      body: "{}",
+    }),
+  reject: (id: string) =>
+    request<any>(`/api/orders/${id}/reject`, {
+      method: "POST",
+      body: "{}",
+    }),
   /** Open (not paid/cancelled) orders — optional table filter */
   open: (table?: string) =>
     request<any[]>(
@@ -415,6 +426,20 @@ export const stockApi = {
     }),
   movements: (id: string) => request<any[]>(`/api/stock/${id}/movements`),
 
+    transfer: (
+    id: string,
+    data: {
+      toLocation: "BAR" | "KITCHEN" | "STORE"
+      full?: boolean
+      amount?: number
+      note?: string
+    }
+  ) =>
+    request<any>(`/api/stock/${id}/transfer`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
   /** Day / range report — what was bought, issued, counted */
    report: (params?: {
     date?: string
@@ -433,6 +458,7 @@ export const stockApi = {
     request<any>("/api/stock/recipe", { method: "POST", body: JSON.stringify(data) }),
   getRecipe: (menuItemId: string) =>
     request<any[]>(`/api/stock/recipe/${menuItemId}`),
+   
 }
 
 // ——— Library API (public + private) ———

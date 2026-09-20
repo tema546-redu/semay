@@ -5,7 +5,11 @@ import { ArrowLeft, Check, Clock } from "lucide-react"
 import { ordersApi } from "../../lib/api"
 import { cn } from "../../lib/utils"
 
-export default function KDS() {
+export default function KDS({
+  station = "KITCHEN",
+}: {
+  station?: "KITCHEN" | "BAR"
+}) {
   const { i18n } = useTranslation()
   const isAm = i18n.language === "am"
   const [orders, setOrders] = useState<any[]>([])
@@ -46,7 +50,15 @@ export default function KDS() {
         <div className="flex items-center gap-4">
           <Link to="/dashboard" className="p-2 -ml-2 rounded-lg hover:bg-semay-800"><ArrowLeft className="w-5 h-5 text-semay-300" /></Link>
           <div>
-            <div className="font-semibold">{isAm ? "የኩሽና ማሳያ" : "Kitchen Display"}</div>
+              <div className="font-semibold">
+              {station === "BAR"
+                ? isAm
+                  ? "ባር ማሳያ"
+                  : "Bar Display"
+                : isAm
+                  ? "የኩሽና ማሳያ"
+                  : "Kitchen Display"}
+            </div>
             <div className="text-xs text-semay-400">Semay KDS</div>
           </div>
         </div>
@@ -60,7 +72,14 @@ export default function KDS() {
         {loading ? <div className="h-full flex items-center justify-center text-semay-500">Loading...</div> :
         orders.length === 0 ? <div className="h-full flex items-center justify-center text-semay-500">{isAm ? "ምንም ትዕዛዝ የለም" : "No active orders"}</div> : (
           <div className="flex gap-5 min-w-max">
-            {orders.map((o) => {
+              {orders.map((o) => {
+              const lines = (o.items || []).filter((item: any) => {
+                const st =
+                  item.station || item.menuItem?.station || "KITCHEN"
+                return st === station
+              })
+              if (lines.length === 0) return null
+
               const mins = Math.floor((now - new Date(o.createdAt).getTime()) / 60000)
               const late = mins >= 12
               const warn = mins >= 8
@@ -74,7 +93,7 @@ export default function KDS() {
                     <div className={cn("text-sm font-semibold", late ? "text-danger" : warn ? "text-warning" : "text-semay-300")}>{mins}m</div>
                   </div>
                   <div className="flex-1 p-4 space-y-3">
-                    {o.items?.map((item: any) => (
+                     {lines.map((item: any) => (
                       <div key={item.id} className="flex gap-3">
                         <div className="w-6 h-6 rounded-md bg-semay-700 flex items-center justify-center text-xs font-bold">{item.quantity}</div>
                         <div className="font-medium text-sm">{item.name}</div>

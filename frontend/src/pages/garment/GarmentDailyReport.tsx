@@ -141,37 +141,18 @@ export default function GarmentDailyReport() {
         updateOrderStage: form.updateOrderStage,
       }
 
-      const result = await offlineMutate({
-        url: garmentUrl("/api/garment/daily-reports"),
-        method: "POST",
-        body: payload,
-        label: "Daily report",
-      })
+    await garmentApi.addDailyReport(payload)
 
-      if (!result.ok && !result.queued) {
-        setErrorMsg(result.error || (isAm ? "ስህተት" : "Something went wrong"))
-        setSaving(false)
-        return
-      }
-
-      if (result.queued) {
-        alert(
-          isAm
-            ? "ኦፍላይን ተቀምጧል። Sync now በኋላ።"
-            : "Saved offline. Sync later."
-        )
-      }
-
-      setShowForm(false)
-      setForm({
-        orderId: "",
-        stage: "SEWING",
-        quantity: "",
-        note: "",
-        blocker: "",
-        updateOrderStage: true,
-      })
-      if (isOnline()) await load()
+setShowForm(false)
+setForm({
+  orderId: "",
+  stage: "SEWING",
+  quantity: "",
+  note: "",
+  blocker: "",
+  updateOrderStage: true,
+})
+await load()
     } catch (err: any) {
       console.error(err)
       setErrorMsg(err?.message || (isAm ? "ማስቀመጥ አልተሳካም" : "Failed to save"))

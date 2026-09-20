@@ -139,7 +139,9 @@ export default function App() {
       <Route path="/help" element={<ProtectedApp><Help /></ProtectedApp>} />
 
       <Route path="/pos" element={<ProtectedApp><POS /></ProtectedApp>} />
-      <Route path="/kds" element={<ProtectedApp><KDS /></ProtectedApp>} />
+      <Route path="/kds" element={<ProtectedApp><KDS station="KITCHEN" /></ProtectedApp>} />
+      <Route path="/kds/kitchen" element={<ProtectedApp><KDS station="KITCHEN" /></ProtectedApp>} />
+      <Route path="/kds/bar" element={<ProtectedApp><KDS station="BAR" /></ProtectedApp>} />
       <Route path="/menu" element={<ProtectedApp><MenuPage /></ProtectedApp>} />
       <Route path="/reservations" element={<ProtectedApp><Reservations /></ProtectedApp>} />
       <Route path="/staff" element={<ProtectedApp><StaffPage /></ProtectedApp>} />

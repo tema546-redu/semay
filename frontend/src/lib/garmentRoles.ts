@@ -19,7 +19,6 @@ export function isGarmentAdmin(role: GarmentRole) {
 /** Invited floor staff — limited UI */
 export function isGarmentStaffOnly(role: GarmentRole) {
   const r = String(role || "").toUpperCase()
-  // treat unknown production roles as staff-limited
   return r === "STAFF" || r === "WAITER" || r === "KITCHEN" || r === "WORKER"
 }
 
@@ -27,20 +26,20 @@ export type NavItem = {
   to: string
   en: string
   am: string
-  icon: string // lucide name key resolved in layout
+  icon: string
   adminOnly?: boolean
   staffOk?: boolean
 }
 
-/** Full admin menu (owner + manager) */
+/** Full admin menu (owner + manager) — paths must match App.tsx */
 export const GARMENT_ADMIN_NAV: NavItem[] = [
-  { to: "/garment/dashboard", en: "Home", am: "መነሻ", icon: "Home", staffOk: false },
+  { to: "/garment", en: "Home", am: "መነሻ", icon: "Home", staffOk: false },
   { to: "/garment/orders", en: "Production", am: "ምርት", icon: "Scissors", staffOk: true },
   { to: "/garment/inventory", en: "Inventory", am: "ክምችት", icon: "Package", staffOk: true },
   { to: "/garment/styles", en: "Styles", am: "ዓይነቶች", icon: "Shirt", adminOnly: true },
   { to: "/garment/staff", en: "Staff", am: "ሰራተኞች", icon: "Users", adminOnly: true },
   { to: "/garment/quality", en: "Quality", am: "ጥራት", icon: "AlertTriangle", staffOk: true },
-  { to: "/garment/Daily", en: "Daily", am: "ዕለታዊ", icon: "ClipboardList", staffOk: true },
+  { to: "/garment/daily", en: "Daily", am: "ዕለታዊ", icon: "ClipboardList", staffOk: true },
   { to: "/garment/money-leaks", en: "Money", am: "ገንዘብ", icon: "Wallet", adminOnly: true },
   { to: "/garment/reports", en: "Reports", am: "ሪፖርት", icon: "BarChart3", adminOnly: true },
 ]

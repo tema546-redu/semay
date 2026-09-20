@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { Link, useLocation } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import {
@@ -19,11 +19,17 @@ import {
   X,
   UserCircle,
   Table2,
+  Bell,
   Package,
   HelpCircle,
 } from "lucide-react"
-import { restaurantApi, billingApi } from "../../lib/api"
+import { restaurantApi, billingApi, ordersApi } from "../../lib/api"
 import { cn } from "../../lib/utils"
+import {
+  ensureNotifyPermission,
+  notifyNewOrderRequest,
+  enableStaffAlerts,
+} from "../../lib/notify"
 
 function SideLink({
   to,
@@ -101,7 +107,15 @@ export default function RestaurantDashboard() {
   const [loading, setLoading] = useState(true)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
+  const [requests, setRequests] = useState<any[]>([])
+  const [showOrdersBell, setShowOrdersBell] = useState(false)
+  const [showStockBell, setShowStockBell] = useState(false)
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const prevRequestCount = useRef(0)
+
   useEffect(() => {
+    ensureNotifyPermission()
+
     const load = () =>
       Promise.all([
         restaurantApi.analytics(),
@@ -112,6 +126,30 @@ export default function RestaurantDashboard() {
         setSettings(s)
         setTrial(b?.subscription || null)
       })
+
+    const loadRequests = () =>
+      ordersApi
+        .requests()
+        .then((list) => {
+          const next = Array.isArray(list) ? list : []
+          const prev = prevRequestCount.current
+          if (next.length > prev && prev >= 0) {
+            const newest = next[next.length - 1] || next[0]
+            notifyNewOrderRequest({
+              tableNumber: newest?.tableNumber,
+              total: newest?.total,
+              customerName: newest?.customerName,
+              customerPhone: newest?.customerPhone,
+              count: next.length - prev,
+            })
+          }
+          prevRequestCount.current = next.length
+          setRequests(next)
+        })
+        .catch(() => setRequests([]))
+
+    loadRequests()
+    const tReq = setInterval(loadRequests, 10000)
 
     load()
       .catch(console.error)
@@ -129,6 +167,7 @@ export default function RestaurantDashboard() {
 
     return () => {
       clearInterval(t)
+      clearInterval(tReq)
       window.removeEventListener("focus", onFocus)
     }
   }, [])
@@ -165,7 +204,8 @@ export default function RestaurantDashboard() {
   const nav = [
     { to: "/dashboard", icon: <LayoutDashboard className="w-4 h-4" />, label: "Dashboard" },
     { to: "/pos", icon: <UtensilsCrossed className="w-4 h-4" />, label: "POS" },
-    { to: "/kds", icon: <ChefHat className="w-4 h-4" />, label: "Kitchen" },
+    { to: "/kds/kitchen", icon: <ChefHat className="w-4 h-4" />, label: "Kitchen display" },
+    { to: "/kds/bar", icon: <ChefHat className="w-4 h-4" />, label: "Bar display" },
     { to: "/menu", icon: <BookOpen className="w-4 h-4" />, label: "Menu" },
     { to: "/reservations", icon: <CalendarDays className="w-4 h-4" />, label: "Reservations" },
     { to: "/staff", icon: <Users className="w-4 h-4" />, label: "Staff" },
@@ -189,6 +229,34 @@ export default function RestaurantDashboard() {
 
   const isActive = (to: string) => path === to || (to !== "/dashboard" && path.startsWith(to))
 
+  const acceptReq = async (id: string) => {
+    setBusyId(id)
+    try {
+      await ordersApi.accept(id)
+      const list = await ordersApi.requests()
+      setRequests(Array.isArray(list) ? list : [])
+    } catch (e: any) {
+      alert(e?.message || "Accept failed")
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const rejectReq = async (id: string) => {
+    if (!confirm("Reject this request?")) return
+    setBusyId(id)
+    try {
+      await ordersApi.reject(id)
+      const list = await ordersApi.requests()
+      setRequests(Array.isArray(list) ? list : [])
+    } catch (e: any) {
+      alert(e?.message || "Reject failed")
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const lowStockCount = (data?.lowStock || []).length
   return (
     <div className="min-h-svh bg-semay-50 flex">
       <aside className="hidden md:flex w-56 flex-col border-r border-semay-200 bg-white shrink-0 h-svh sticky top-0">
@@ -296,13 +364,156 @@ export default function RestaurantDashboard() {
               </p>
             </div>
           </div>
-          <Link
-            to="/pos"
-            className="text-xs font-semibold bg-emerald-400 text-semay-900 px-4 py-1.5 rounded-full shadow-sm"
-          >
-            POS
-          </Link>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setShowOrdersBell((v) => !v)
+                setShowStockBell(false)
+              }}
+              className="relative w-9 h-9 rounded-full bg-white/10 flex items-center justify-center"
+              title="Order requests"
+            >
+              <Bell className="w-4 h-4 text-emerald-300" />
+              {requests.length > 0 && (
+                <>
+                  <span className="absolute inset-0 rounded-full bg-emerald-400/25 animate-ping" />
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-emerald-400 text-semay-900 text-[10px] font-bold flex items-center justify-center">
+                    {requests.length}
+                  </span>
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setShowStockBell((v) => !v)
+                setShowOrdersBell(false)
+              }}
+              className="relative w-9 h-9 rounded-full bg-white/10 flex items-center justify-center"
+              title="Low stock"
+            >
+              <Package className="w-4 h-4 text-rose-300" />
+              {lowStockCount > 0 && (
+                <>
+                  <span className="absolute inset-0 rounded-full bg-rose-400/25 animate-ping" />
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">
+                    {lowStockCount}
+                  </span>
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={async () => {
+                const ok = await enableStaffAlerts()
+                alert(
+                  ok
+                    ? "Alerts enabled — you will hear a beep and see desktop popups for new orders."
+                    : "Notifications blocked. Click the lock icon in the address bar → Notifications → Allow, then try again."
+                )
+              }}
+              className="text-[10px] px-2 py-1.5 rounded-full bg-white/10 text-white/90 hover:bg-white/20"
+            >
+              Enable alerts
+            </button>
+
+            <Link
+              to="/pos"
+              className="text-xs font-semibold bg-emerald-400 text-semay-900 px-4 py-1.5 rounded-full shadow-sm"
+            >
+              POS
+            </Link>
+          </div>
         </header>
+
+                {(showOrdersBell || showStockBell) && (
+          <div className="px-4 md:px-6 pt-3 max-w-6xl">
+            {showOrdersBell && (
+              <div className="bg-white border border-emerald-100 rounded-xl shadow-lg p-4 space-y-3 mb-2">
+                <div className="text-sm font-semibold text-semay-900">
+                  Order requests ({requests.length})
+                </div>
+                {requests.length === 0 ? (
+                  <p className="text-sm text-semay-400">None pending</p>
+                ) : (
+                  requests.map((o) => (
+                    <div
+                      key={o.id}
+                      className="border border-semay-100 rounded-xl p-3 space-y-2"
+                    >
+                      <div className="flex justify-between text-sm">
+                        <span className="font-medium">Place {o.tableNumber}</span>
+                        <span className="tabular-nums">
+                          {Number(o.total).toLocaleString()} ETB
+                        </span>
+                      </div>
+                      {(o.customerName || o.customerPhone) && (
+                        <p className="text-xs text-stone-500">
+                          {[o.customerName, o.customerPhone]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </p>
+                      )}
+                      <ul className="text-xs text-semay-500">
+                        {(o.items || []).map((it: any) => (
+                          <li key={it.id}>
+                            {it.quantity}× {it.name}
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          disabled={busyId === o.id}
+                          onClick={() => acceptReq(o.id)}
+                          className="flex-1 text-xs py-2 rounded-lg bg-emerald-700 text-white disabled:opacity-50"
+                        >
+                          Accept
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busyId === o.id}
+                          onClick={() => rejectReq(o.id)}
+                          className="text-xs px-3 py-2 rounded-lg border disabled:opacity-50"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            {showStockBell && (
+              <div className="bg-white border border-rose-100 rounded-xl shadow-lg p-4 space-y-2 mb-2">
+                <div className="text-sm font-semibold text-semay-900">
+                  Low stock ({lowStockCount})
+                </div>
+                {lowStockCount === 0 ? (
+                  <p className="text-sm text-semay-400">All levels OK</p>
+                ) : ( 
+                  <ul className="text-sm space-y-1">
+                    {(data?.lowStock || []).map((m: any) => (
+                      <li key={m.id} className="flex justify-between gap-2">
+                        <span className="truncate">{m.name}</span>
+                        <span className="text-rose-600 tabular-nums shrink-0">
+                          {m.stockQty ?? `${m.quantity ?? ""} ${m.unit || ""}`}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <Link to="/stock" className="text-xs font-medium text-rose-700 underline">
+                  Open stock →
+                </Link>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="p-4 md:p-6 space-y-4 max-w-6xl">
           {trial?.isTrial && trial.daysLeft != null && (
@@ -407,7 +618,7 @@ export default function RestaurantDashboard() {
                     </span>
                     Active orders
                   </h2>
-                  <Link to="/kds" className="text-xs font-medium text-semay-600">
+                  <Link to="/kds/kitchen" className="text-xs font-medium text-semay-600">
                     Open Kitchen →
                   </Link>
                 </div>

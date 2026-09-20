@@ -194,6 +194,7 @@ model MenuItem {
   price          Decimal      @db.Decimal(10, 2)
   description    String?
   available      Boolean      @default(true)
+  station        String       @default("KITCHEN")
   stockQty       Int?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
@@ -232,6 +233,8 @@ model Order {
   receiptPrintCount  Int          @default(0)
   receiptScannedAt   DateTime?
   receiptScannedById String?
+  customerName  String?
+  customerPhone String?
 
   @@index([organizationId])
   @@index([organizationId, status, createdAt])
