@@ -845,3 +845,68 @@ export const garmentApi = {
       )}&days=${days}`
     ),
 }
+
+export const storeApi = {
+  summary: () => request<any>("/api/store/summary"),
+
+  items: () => request<any[]>("/api/store/items"),
+
+  createItem: (body: {
+    name: string
+    unit?: string
+    quantity?: number
+    unitCost?: number
+    lowAt?: number | null
+  }) =>
+    request<any>("/api/store/items", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  updateItem: (
+    id: string,
+    body: {
+      name?: string
+      unit?: string
+      lowAt?: number | null
+      unitCost?: number | null
+    }
+  ) =>
+    request<any>(`/api/store/items/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  removeItem: (id: string) =>
+    request<any>(`/api/store/items/${id}`, { method: "DELETE" }),
+
+  receive: (body: {
+    stockItemId: string
+    quantity: number
+    unitPrice: number
+    fromWhere?: string
+    note?: string
+  }) =>
+    request<any>("/api/store/receive", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  out: (body: {
+    stockItemId: string
+    quantity: number
+    toWhere: string
+    note?: string
+  }) =>
+    request<any>("/api/store/out", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  movements: (params?: Record<string, string>) => {
+    const q = params ? "?" + new URLSearchParams(params).toString() : ""
+    return request<any[]>(`/api/store/movements${q}`)
+  },
+
+  billing: () => request<any>("/api/store/billing"),
+}

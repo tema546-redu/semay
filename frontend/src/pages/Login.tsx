@@ -12,6 +12,7 @@ function homeForType(type?: string) {
   if (type === "PHARMACY") return "/dashboard"
   if (type === "GYM") return "/dashboard"
   if (type === "HOTEL") return "/dashboard"
+  if ((orgType || "").toUpperCase() === "STORE") navigate("/store", { replace: true })
 
   return "/dashboard"
 }

@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next"
 import { ArrowLeft, CreditCard, Copy } from "lucide-react"
 import { billingApi } from "../lib/api"
 import { cn } from "../lib/utils"
+import { useAuth } from "../lib/auth"
 
 function printSemayReceipt(opts: {
   orgName: string
@@ -58,6 +59,12 @@ export default function Billing() {
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState("")
 
+  const { organization } = useAuth() as any
+  const backTo =
+    String(organization?.type || "").toUpperCase() === "GARMENT"
+      ? "/garment/settings"
+      : "/dashboard"
+
   const load = async () => {
     try {
       const cur = await billingApi.current()
@@ -76,6 +83,8 @@ export default function Billing() {
   useEffect(() => {
     load()
   }, [])
+
+  
 
   const onReceipt = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -141,7 +150,7 @@ export default function Billing() {
   return (
     <div className="min-h-svh bg-semay-50">
       <header className="bg-white border-b border-semay-200 px-6 h-14 flex items-center gap-4 sticky top-0 z-10">
-        <Link to="/dashboard" className="p-2 -ml-2 rounded-lg hover:bg-semay-100">
+        <Link to={backTo} className="p-2 -ml-2 rounded-lg hover:bg-semay-100">
           <ArrowLeft className="w-5 h-5 text-semay-600" />
         </Link>
         <h1 className="font-semibold text-semay-900 flex items-center gap-2">

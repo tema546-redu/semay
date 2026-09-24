@@ -29,6 +29,7 @@ import libraryNetworkRoutes from "./routes/libraryNetwork.js"
 import salonRouter from "./routes/salon"
 import publicSalonRouter from "./routes/publicSalon.js"
 import garmentRoutes from "./routes/garment.js"
+import storeRoutes from "./routes/store.js"
 
 const app = express()
 const PORT = Number(process.env.PORT) || 3001
@@ -107,6 +108,7 @@ app.use("/api/library", libraryRoutes)
 app.use("/api/public", publicMenuRoutes)
 app.use("/api/salon", publicSalonRouter)
 app.use("/api/garment", garmentRoutes)
+app.use("/api/store", storeRoutes)
 
 // 404 handler
 app.use((_req, res) => res.status(404).json({ error: "Not found" }))

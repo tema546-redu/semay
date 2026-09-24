@@ -35,6 +35,7 @@ enum BusinessType {
   LIBRARY
   SUBCITY
   GARMENT
+  STORE
 }
 
 enum OrderStatus {
@@ -66,6 +67,11 @@ enum SubscriptionStatus {
   CANCELLED
   TRIAL
   PENDING_PAYMENT
+}
+
+enum StockMoveType {
+  IN
+  OUT
 }
 
 model User {
@@ -1239,16 +1245,17 @@ model StockMovement {
   id             String    @id @default(cuid())
   organizationId String
   stockItemId    String
-  /// IN = receive, OUT = issue to kitchen/bar, COUNT = physical count, SALE = auto from POS (optional later)
+  /// IN = receive, OUT = issue, COUNT = physical count, SALE = optional
   type           String
-  /// For IN/OUT: amount moved. For COUNT: the physical qty counted.
   quantity       Decimal   @db.Decimal(14, 3)
-  /// On-hand after this movement
   balanceAfter   Decimal   @db.Decimal(14, 3)
-  /// COUNT only: physical - system (before count)
   difference     Decimal?  @db.Decimal(14, 3)
   invoiceNo      String?
   note           String?
+  fromWhere      String?
+  toWhere        String?
+  unitPrice      Decimal?  @db.Decimal(14, 2)
+  totalAmount    Decimal?  @db.Decimal(14, 2)
   userId         String?
   createdAt      DateTime  @default(now())
   stockItem      StockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)

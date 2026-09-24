@@ -40,7 +40,7 @@ type PayOrder = {
   receiptScannedAt?: string | null
 }
 
-type RangeKey = "today" | "7d" | "month" | "year"
+type RangeKey = "today" | "7d" | "month" | "year" | "custom"
 type ListMode = "all" | "scanned" | "not_scanned"
 
 const METHOD_LABELS: Record<string, string> = {
@@ -224,6 +224,8 @@ export default function Reports() {
   const [msg, setMsg] = useState("")
   const [range, setRange] = useState<RangeKey>("today")
   const [selectedDate, setSelectedDate] = useState<string>("")
+  const [customFrom, setCustomFrom] = useState("")
+  const [customTo, setCustomTo] = useState("")
   const [selectedHour, setSelectedHour] = useState<number | null>(null)
   const [lightbox, setLightbox] = useState<string | null>(null)
   const [branchFilter, setBranchFilter] = useState<string>("all")
@@ -265,6 +267,16 @@ export default function Reports() {
 
   const load = () => {
     setLoadingReport(true)
+    let url = "/api/restaurant/payment-report?"
+
+    if (range === "custom" && customFrom && customTo) {
+      url += `from=${encodeURIComponent(customFrom)}&to=${encodeURIComponent(customTo)}`
+    } else if (selectedDate) {
+      url += `date=${encodeURIComponent(selectedDate)}`
+    } else {
+      url += `range=${range}`
+    }
+
     return request<{
       orders: PayOrder[]
       byMethod: Record<string, number>
@@ -273,21 +285,21 @@ export default function Reports() {
       scannedTotal?: number
       topItemsScanned?: { name: string; qty: number }[]
       topItemsAll?: { name: string; qty: number }[]
-    }>(
-      selectedDate
-        ? `/api/restaurant/payment-report?date=${selectedDate}`
-        : `/api/restaurant/payment-report?range=${range}`
-    )
+    }>(url)
       .then(setData)
       .catch(console.error)
       .finally(() => setLoadingReport(false))
   }
 
   useEffect(() => {
+    // Custom range: only auto-load when both dates set (or use "See report" button)
+    if (range === "custom") {
+      if (!customFrom || !customTo) return
+    }
     load()
     request("/api/restaurant/cleanup-receipts", { method: "POST" }).catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range, selectedDate])
+  }, [range, selectedDate, customFrom, customTo])
 
   const branches = useMemo(() => {
     const map = new Map<string, string>()
@@ -541,9 +553,15 @@ export default function Reports() {
         ? "Last 7 days"
         : range === "month"
           ? "This month"
-          : "This year"
+          : range === "year"
+            ? "This year"
+            : range === "custom" && customFrom && customTo
+              ? `${formatDayLabel(customFrom)} → ${formatDayLabel(customTo)}`
+              : "Custom range"
 
-  const headerLabel = selectedDate ? `Report for ${formatDayLabel(selectedDate)}` : rangeLabel
+  const headerLabel = selectedDate
+    ? `Report for ${formatDayLabel(selectedDate)}`
+    : rangeLabel
 
   const home =
     user?.role === "WAITER" || user?.role === "STAFF" || user?.role === "KITCHEN"
@@ -664,7 +682,15 @@ export default function Reports() {
         </div>
 
         <div className="flex flex-wrap gap-2 print:hidden">
-          {(["today", "7d", "month", "year"] as RangeKey[]).map((r) => (
+          {(
+            [
+              ["today", "Today"],
+              ["7d", "7 days"],
+              ["month", "Month"],
+              ["year", "Year"],
+              ["custom", "Custom"],
+            ] as [RangeKey, string][]
+          ).map(([r, label]) => (
             <button
               key={r}
               type="button"
@@ -681,10 +707,50 @@ export default function Reports() {
                   : "border-semay-200 text-semay-600"
               )}
             >
-              {r === "today" ? "Today" : r === "7d" ? "7 days" : r === "month" ? "Month" : "Year"}
+              {label}
             </button>
           ))}
         </div>
+
+        {range === "custom" && (
+          <div className="flex flex-wrap gap-2 items-end print:hidden">
+            <div>
+              <label className="text-[10px] text-semay-400 block mb-1">From</label>
+              <input
+                type="date"
+                value={customFrom}
+                onChange={(e) => setCustomFrom(e.target.value)}
+                className="text-xs border border-semay-200 rounded-lg px-2 py-1.5 bg-white"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] text-semay-400 block mb-1">To</label>
+              <input
+                type="date"
+                value={customTo}
+                onChange={(e) => setCustomTo(e.target.value)}
+                className="text-xs border border-semay-200 rounded-lg px-2 py-1.5 bg-white"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (!customFrom || !customTo) {
+                  setMsg("Pick From and To dates (at least a few days)")
+                  return
+                }
+                if (customFrom > customTo) {
+                  setMsg("From must be before To")
+                  return
+                }
+                load()
+              }}
+              className="text-xs font-medium px-3 py-1.5 rounded-lg bg-emerald-700 text-white"
+            >
+              See report
+            </button>
+          </div>
+        )}
                 {loadingReport && (
           <p className="text-xs text-semay-500 print:hidden">Loading {headerLabel}…</p>
         )}

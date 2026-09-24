@@ -77,6 +77,12 @@ import GarmentMoneyLeaks from "./pages/garment/GarmentMoneyLeaks"
 import GarmentReports from "./pages/garment/GarmentReports"
 import GarmentGuide from "./pages/garment/GarmentGuide"
 import GarmentStaffHome from "./pages/garment/GarmentStaffHome"
+import StoreDashboard from "./pages/store/StoreDashboard"
+import StoreItems from "./pages/store/StoreItems"
+import StoreReceive from "./pages/store/StoreReceive"
+import StoreOut from "./pages/store/StoreOut"
+import StoreReports from "./pages/store/StoreReports"
+import StoreSettings from "./pages/store/StoreSettings"
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, loading } = useAuth()
@@ -108,6 +114,7 @@ function SmartDashboard() {
   if (t === "PHARMACY") return <PharmacyDashboard />
   if (t === "SALON") return <SalonDashboard />
   if (t === "GARMENT") return <Navigate to="/garment" replace />
+  if (t === "STORE") return <Navigate to="/store" replace />
   return <Dashboard />
 }
 
@@ -207,6 +214,12 @@ export default function App() {
       <Route path="/garment/daily-report" element={<ProtectedApp><GarmentDailyReport /></ProtectedApp>} />
       <Route path="/garment/money-leaks" element={<ProtectedApp><GarmentMoneyLeaks /></ProtectedApp>} />
       <Route path="/garment/reports" element={<ProtectedApp><GarmentReports /></ProtectedApp>} />
+      <Route path="/store" element={<StoreDashboard />} />
+      <Route path="/store/items" element={<StoreItems />} />
+      <Route path="/store/receive" element={<StoreReceive />} />
+      <Route path="/store/out" element={<StoreOut />} />
+      <Route path="/store/reports" element={<StoreReports />} />
+      <Route path="/store/settings" element={<StoreSettings />} />
       <Route path="/garment/guide" element={<ProtectedApp><GarmentGuide /></ProtectedApp>} />
       <Route
   path="/garment/staff-home"
