@@ -55,12 +55,6 @@ app.use(
   })
 )
 
-// Explicit preflight for all routes
-app.options("*", cors({
-  origin: true,
-  credentials: true,
-}))
-
 app.use(express.json({ limit: "2mb" }))
 
 // Health check with DB verification
