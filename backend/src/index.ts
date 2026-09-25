@@ -115,6 +115,6 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   })
 })
 
-app.listen(PORT, () => {
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Semaiy backend on port ${PORT}`)
 })
