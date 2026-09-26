@@ -41,21 +41,26 @@ const allowedOrigins = [
   "http://localhost:3000",
 ]
 
-app.use(
-  cors({
-    origin(origin, cb) {
-      if (!origin) return cb(null, true)
-      if (allowedOrigins.includes(origin)) return cb(null, true)
-      return cb(new Error("Not allowed by CORS"))
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "x-admin-key"],
-    maxAge: 86400,
-  })
-)
+const corsOptions = {
+  origin(
+    origin: string | undefined,
+    callback: (err: Error | null, allow?: boolean) => void
+  ) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true)
+    } else {
+      callback(new Error("Not allowed by CORS"))
+    }
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "x-admin-key"],
+  optionsSuccessStatus: 204,
+}
 
-app.options("/api/*", cors())
+app.use(cors(corsOptions))
+
+app.options("/api/auth/login", cors(corsOptions))
 
 app.use(express.json({ limit: "2mb" }))
 
@@ -63,6 +68,7 @@ app.use(express.json({ limit: "2mb" }))
 app.get("/health", async (_req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`
+
     res.status(200).json({
       status: "ok",
       db: "connected",
@@ -107,13 +113,19 @@ app.use("/api/garment", garmentRoutes)
 app.use("/api/store", storeRoutes)
 
 // 404 handler
-app.use((_req, res) => res.status(404).json({ error: "Not found" }))
+app.use((_req, res) => {
+  res.status(404).json({ error: "Not found" })
+})
 
 // Global error handler — MUST be after all routes
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   console.error(err)
+
   res.status(err.status || 500).json({
-    error: process.env.NODE_ENV === "production" ? "Internal server error" : err.message,
+    error:
+      process.env.NODE_ENV === "production"
+        ? "Internal server error"
+        : err.message,
   })
 })
 
