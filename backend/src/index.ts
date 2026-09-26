@@ -55,6 +55,8 @@ app.use(
   })
 )
 
+app.options("/api/*", cors())
+
 app.use(express.json({ limit: "2mb" }))
 
 // Health check with DB verification
