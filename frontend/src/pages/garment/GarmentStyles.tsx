@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
 import { garmentApi } from "../../lib/api"
-import { ArrowLeft, Plus, Tags } from "lucide-react"
+import { ArrowLeft, Plus, Tags, MoreVertical, Pencil, Trash2 } from "lucide-react"
 import GarmentLayout from "../../components/GarmentLayout"
 
 const SUGGESTED = [
@@ -13,6 +13,7 @@ const SUGGESTED = [
   "Uniform",
   "Dress",
   "Jacket",
+  "Pijama",
   "Other",
 ]
 
@@ -23,6 +24,9 @@ export default function GarmentStyles() {
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [filterCat, setFilterCat] = useState<string>("ALL")
+  const [menuId, setMenuId] = useState<string | null>(null)
+  const [editing, setEditing] = useState<any | null>(null)
+  const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
     name: "",
     sku: "",
@@ -42,6 +46,14 @@ export default function GarmentStyles() {
   useEffect(() => {
     load()
   }, [])
+
+  // close ⋮ menu on outside tap
+  useEffect(() => {
+    if (!menuId) return
+    const close = () => setMenuId(null)
+    window.addEventListener("click", close)
+    return () => window.removeEventListener("click", close)
+  }, [menuId])
 
   const categories = useMemo(() => {
     const set = new Set<string>()
@@ -66,7 +78,43 @@ export default function GarmentStyles() {
     return Object.entries(map).sort(([a], [b]) => a.localeCompare(b))
   }, [styles, filterCat, isAm])
 
-  const handleCreate = async (e: React.FormEvent) => {
+  const openCreate = () => {
+    setEditing(null)
+    setForm({ name: "", sku: "", category: "", newCategory: "" })
+    setShowForm(true)
+    setMenuId(null)
+  }
+
+  const openEdit = (s: any) => {
+    setEditing(s)
+    setForm({
+      name: s.name || "",
+      sku: s.sku || "",
+      category: s.category || "",
+      newCategory: "",
+    })
+    setShowForm(true)
+    setMenuId(null)
+  }
+
+  const handleDelete = async (s: any) => {
+    setMenuId(null)
+    const ok = window.confirm(
+      isAm
+        ? `“${s.name}” ይጥፋ?`
+        : `Delete “${s.name}”?`
+    )
+    if (!ok) return
+    try {
+      await garmentApi.deleteStyle(s.id)
+      load()
+    } catch (err: any) {
+      console.error(err)
+      alert(err?.message || (isAm ? "መሰረዝ አልተሳካም" : "Delete failed"))
+    }
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     const category =
       form.category === "__new__"
@@ -76,18 +124,30 @@ export default function GarmentStyles() {
       alert(isAm ? "ስም እና ምድብ ያስፈልጋል" : "Name and category required")
       return
     }
+    setSaving(true)
     try {
-      await garmentApi.createStyle({
-        name: form.name.trim(),
-        sku: form.sku.trim() || undefined,
-        category,
-      })
+      if (editing?.id) {
+        await garmentApi.updateStyle(editing.id, {
+          name: form.name.trim(),
+          sku: form.sku.trim() || undefined,
+          category,
+        })
+      } else {
+        await garmentApi.createStyle({
+          name: form.name.trim(),
+          sku: form.sku.trim() || undefined,
+          category,
+        })
+      }
       setShowForm(false)
+      setEditing(null)
       setForm({ name: "", sku: "", category: "", newCategory: "" })
       load()
-    } catch (err) {
+    } catch (err: any) {
       console.error(err)
-      alert(isAm ? "ስህተት ተከስቷል" : "Something went wrong")
+      alert(err?.message || (isAm ? "ስህተት ተከስቷል" : "Something went wrong"))
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -96,7 +156,7 @@ export default function GarmentStyles() {
       <div className="min-h-svh bg-semay-50 pb-24">
         <div className="bg-white border-b border-semay-200 px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link to="/garment/dashboard">
+            <Link to="/garment">
               <ArrowLeft className="w-5 h-5" />
             </Link>
             <div>
@@ -112,14 +172,13 @@ export default function GarmentStyles() {
           </div>
           <button
             type="button"
-            onClick={() => setShowForm(true)}
+            onClick={openCreate}
             className="p-2 bg-semay-900 text-white rounded-xl"
           >
             <Plus className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Category filter */}
         <div className="px-4 pt-3 flex gap-2 overflow-x-auto pb-1">
           <button
             type="button"
@@ -162,27 +221,69 @@ export default function GarmentStyles() {
               <section key={cat}>
                 <div className="flex items-center gap-2 mb-2 px-1">
                   <Tags className="w-4 h-4 text-semay-500" />
-                  <h2 className="text-sm font-semibold text-semay-700">
-                    {cat}
-                  </h2>
+                  <h2 className="text-sm font-semibold text-semay-700">{cat}</h2>
                   <span className="text-xs text-semay-400">({list.length})</span>
                 </div>
                 <div className="space-y-2">
                   {list.map((s) => (
-                    <Link
+                    <div
                       key={s.id}
-                      to={`/garment/styles/${s.id}/bom`}
-                      className="block bg-white border border-semay-200 rounded-2xl p-4"
+                      className="relative bg-white border border-semay-200 rounded-2xl p-4"
                     >
-                      <div className="font-medium">{s.name}</div>
-                      <div className="text-sm text-semay-500 mt-1">
-                        {s.sku && `SKU: ${s.sku} · `}
-                        {s.category}
+                      <div className="flex items-start gap-2">
+                        <Link
+                          to={`/garment/styles/${s.id}/bom`}
+                          className="flex-1 min-w-0"
+                        >
+                          <div className="font-medium text-semay-900">{s.name}</div>
+                          <div className="text-sm text-semay-500 mt-1">
+                            {s.sku && `SKU: ${s.sku} · `}
+                            {s.category}
+                          </div>
+                          <div className="text-xs text-semay-600 mt-2">
+                            {isAm ? "ቢኦኤም / ቁሳቁስ →" : "BOM / materials →"}
+                          </div>
+                        </Link>
+
+                        {/* ⋮ menu */}
+                        <div className="relative shrink-0">
+                          <button
+                            type="button"
+                            className="p-1.5 rounded-lg text-semay-500 hover:bg-semay-100"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setMenuId(menuId === s.id ? null : s.id)
+                            }}
+                            aria-label="More"
+                          >
+                            <MoreVertical className="w-5 h-5" />
+                          </button>
+                          {menuId === s.id && (
+                            <div
+                              className="absolute right-0 top-9 z-20 w-36 bg-white border border-semay-200 rounded-xl shadow-lg py-1 overflow-hidden"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <button
+                                type="button"
+                                className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left hover:bg-semay-50"
+                                onClick={() => openEdit(s)}
+                              >
+                                <Pencil className="w-4 h-4" />
+                                {isAm ? "አርትዕ" : "Edit"}
+                              </button>
+                              <button
+                                type="button"
+                                className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left text-red-600 hover:bg-red-50"
+                                onClick={() => handleDelete(s)}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                                {isAm ? "ሰርዝ" : "Delete"}
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <div className="text-xs text-semay-600 mt-2">
-                        {isAm ? "ቢኦኤም / ቁሳቁስ →" : "BOM / materials →"}
-                      </div>
-                    </Link>
+                    </div>
                   ))}
                 </div>
               </section>
@@ -194,9 +295,15 @@ export default function GarmentStyles() {
           <div className="fixed inset-0 bg-black/40 z-50 flex items-end md:items-center justify-center">
             <div className="bg-white w-full md:max-w-md md:rounded-2xl rounded-t-3xl p-6 space-y-4">
               <h2 className="text-lg font-semibold">
-                {isAm ? "አዲስ ዓይነት" : "New style"}
+                {editing
+                  ? isAm
+                    ? "ዓይነት አርትዕ"
+                    : "Edit style"
+                  : isAm
+                    ? "አዲስ ዓይነት"
+                    : "New style"}
               </h2>
-              <form onSubmit={handleCreate} className="space-y-3">
+              <form onSubmit={handleSubmit} className="space-y-3">
                 <div>
                   <label className="text-xs text-semay-500">
                     {isAm ? "ምድብ (እራሳችሁ)" : "Category (yours)"} *
@@ -225,9 +332,7 @@ export default function GarmentStyles() {
                 {form.category === "__new__" && (
                   <input
                     required
-                    placeholder={
-                      isAm ? "አዲስ ምድብ ስም" : "New category name"
-                    }
+                    placeholder={isAm ? "አዲስ ምድብ ስም" : "New category name"}
                     value={form.newCategory}
                     onChange={(e) =>
                       setForm({ ...form, newCategory: e.target.value })
@@ -253,16 +358,20 @@ export default function GarmentStyles() {
                 <div className="flex gap-3 pt-2">
                   <button
                     type="button"
-                    onClick={() => setShowForm(false)}
+                    onClick={() => {
+                      setShowForm(false)
+                      setEditing(null)
+                    }}
                     className="flex-1 py-3 border border-semay-200 rounded-xl"
                   >
                     {isAm ? "ሰርዝ" : "Cancel"}
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 py-3 bg-semay-900 text-white rounded-xl"
+                    disabled={saving}
+                    className="flex-1 py-3 bg-semay-900 text-white rounded-xl disabled:opacity-60"
                   >
-                    {isAm ? "አስቀምጥ" : "Save"}
+                    {saving ? "..." : isAm ? "አስቀምጥ" : "Save"}
                   </button>
                 </div>
               </form>

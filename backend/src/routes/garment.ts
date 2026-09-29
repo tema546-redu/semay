@@ -1316,4 +1316,55 @@ router.get(
   }
 )
 
+router.patch(
+  "/styles/:id",
+  authenticate,
+  requireOrganization,
+  async (req: Request, res: Response) => {
+    try {
+      const orgId = getOrgId(req)
+      const id = getId(req.params.id)
+      const { name, sku, category } = req.body
+      const existing = await prisma.garmentStyle.findFirst({
+        where: { id, organizationId: orgId },
+      })
+      if (!existing) return res.status(404).json({ error: "Not found" })
+      const updated = await prisma.garmentStyle.update({
+        where: { id },
+        data: {
+          ...(name != null ? { name: String(name) } : {}),
+          ...(sku != null ? { sku: String(sku) || null } : {}),
+          ...(category != null ? { category: String(category) } : {}),
+        },
+      })
+      res.json(updated)
+    } catch (err: any) {
+      console.error(err)
+      res.status(500).json({ error: err?.message || "Update failed" })
+    }
+  }
+)
+
+router.delete(
+  "/styles/:id",
+  authenticate,
+  requireOrganization,
+  async (req: Request, res: Response) => {
+    try {
+      const orgId = getOrgId(req)
+      const id = getId(req.params.id)
+      const existing = await prisma.garmentStyle.findFirst({
+        where: { id, organizationId: orgId },
+      })
+      if (!existing) return res.status(404).json({ error: "Not found" })
+      await prisma.garmentBOMItem.deleteMany({ where: { styleId: id } }).catch(() => {})
+      await prisma.garmentStyle.delete({ where: { id } })
+      res.json({ ok: true })
+    } catch (err: any) {
+      console.error(err)
+      res.status(500).json({ error: err?.message || "Delete failed" })
+    }
+  }
+)
+
 export default router

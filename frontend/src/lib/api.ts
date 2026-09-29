@@ -844,6 +844,14 @@ export const garmentApi = {
         workerId
       )}&days=${days}`
     ),
+
+      updateStyle: (id: string, data: { name?: string; sku?: string; category?: string }) =>
+    request(`/api/garment/styles/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  deleteStyle: (id: string) =>
+    request(`/api/garment/styles/${id}`, { method: "DELETE" }),
 }
 
 export const storeApi = {
