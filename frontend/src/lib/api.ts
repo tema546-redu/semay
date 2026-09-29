@@ -845,14 +845,43 @@ export const garmentApi = {
       )}&days=${days}`
     ),
 
-      updateStyle: (id: string, data: { name?: string; sku?: string; category?: string }) =>
-    request(`/api/garment/styles/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify(data),
-    }),
-  deleteStyle: (id: string) =>
-    request(`/api/garment/styles/${id}`, { method: "DELETE" }),
-}
+router.delete(
+  "/styles/:id",
+  authenticate,
+  requireOrganization,
+  async (req: Request, res: Response) => {
+    try {
+      const orgId = getOrgId(req)
+      const id = getId(req.params.id)
+
+      const existing = await prisma.garmentStyle.findFirst({
+        where: { id, organizationId: orgId },
+      })
+      if (!existing) {
+        return res.status(404).json({ error: "Style not found" })
+      }
+
+      const orderCount = await prisma.garmentProductionOrder.count({
+        where: { styleId: id },
+      })
+      if (orderCount > 0) {
+        return res.status(400).json({
+          error: `Cannot delete: ${orderCount} production order(s) use this style. Remove or finish those orders first.`,
+        })
+      }
+
+      await prisma.garmentBOMItem.deleteMany({ where: { styleId: id } })
+      await prisma.garmentStyle.delete({ where: { id } })
+
+      res.json({ ok: true })
+    } catch (err: any) {
+      console.error("delete style", err)
+      res.status(500).json({
+        error: err?.message || "Delete failed",
+      })
+    }
+  }
+)
 
 export const storeApi = {
   summary: () => request<any>("/api/store/summary"),
