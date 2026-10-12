@@ -1353,16 +1353,35 @@ router.delete(
     try {
       const orgId = getOrgId(req)
       const id = getId(req.params.id)
+
       const existing = await prisma.garmentStyle.findFirst({
         where: { id, organizationId: orgId },
       })
-      if (!existing) return res.status(404).json({ error: "Not found" })
-      await prisma.garmentBOMItem.deleteMany({ where: { styleId: id } }).catch(() => {})
+      if (!existing) {
+        return res.status(404).json({ error: "Style not found" })
+      }
+
+      const orderCount = await prisma.garmentProductionOrder.count({
+        where: { styleId: id },
+      })
+      if (orderCount > 0) {
+        return res.status(400).json({
+          error: `Cannot delete: ${orderCount} production order(s) use this style. Finish or delete those orders first.`,
+        })
+      }
+
+      await prisma.garmentBOMItem.deleteMany({ where: { styleId: id } })
+      await prisma.garmentStyleVariant
+        .deleteMany({ where: { styleId: id } })
+        .catch(() => {})
       await prisma.garmentStyle.delete({ where: { id } })
+
       res.json({ ok: true })
     } catch (err: any) {
-      console.error(err)
-      res.status(500).json({ error: err?.message || "Delete failed" })
+      console.error("delete style", err)
+      res.status(500).json({
+        error: err?.message || "Delete failed",
+      })
     }
   }
 )
