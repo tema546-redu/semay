@@ -1371,7 +1371,7 @@ router.delete(
       }
 
       await prisma.garmentBOMItem.deleteMany({ where: { styleId: id } })
-      await prisma.garmentStyleVariant
+      await prisma.garmentVariant
         .deleteMany({ where: { styleId: id } })
         .catch(() => {})
       await prisma.garmentStyle.delete({ where: { id } })
