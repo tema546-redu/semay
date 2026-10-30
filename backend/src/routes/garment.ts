@@ -17,6 +17,51 @@ function isOwnerOrManager(user: any): boolean {
   return role === "OWNER" || role === "MANAGER"
 }
 
+/** Sum line planned/actual onto the order header */
+async function refreshOrderTotals(orderId: string) {
+  const lines = await prisma.garmentOrderLine.findMany({
+    where: { orderId },
+    select: { plannedQty: true, actualQty: true },
+  })
+  const plannedQty = lines.reduce((s, l) => s + Number(l.plannedQty || 0), 0)
+  const actualQty = lines.reduce((s, l) => s + Number(l.actualQty || 0), 0)
+  await prisma.garmentProductionOrder.update({
+    where: { id: orderId },
+    data: { plannedQty, actualQty },
+  })
+}
+
+/** Old orders: 1 header style → 1 line (idempotent) */
+async function ensureOrderLines(order: {
+  id: string
+  styleId: string | null
+  plannedQty: number
+  actualQty: number
+  notes: string | null
+}) {
+  const count = await prisma.garmentOrderLine.count({
+    where: { orderId: order.id },
+  })
+  if (count > 0) return
+  if (!order.styleId) return
+
+  let sizeNote: string | null = null
+  if (order.notes && /Sizes:/i.test(order.notes)) {
+    sizeNote = order.notes.replace(/^Sizes:\s*/i, "").trim() || null
+  }
+
+  await prisma.garmentOrderLine.create({
+    data: {
+      orderId: order.id,
+      styleId: order.styleId,
+      plannedQty: order.plannedQty || 0,
+      actualQty: order.actualQty || 0,
+      sizeNote,
+      sortOrder: 0,
+    },
+  })
+}
+
 // ===================== DASHBOARD =====================
 router.get(
   "/dashboard",
@@ -109,33 +154,42 @@ router.post(
   authenticate,
   requireOrganization,
   async (req: Request, res: Response) => {
-    const { name, nameAm, sku, category, description, imageUrl, variants } =
-      req.body
+    try {
+      const { name, nameAm, sku, category, description, imageUrl, variants } =
+        req.body
 
-    const style = await prisma.garmentStyle.create({
-      data: {
-        name,
-        nameAm,
-        sku,
-        category,
-        description,
-        imageUrl,
-        organizationId: getOrgId(req),
-        variants: variants?.length
-          ? {
-              create: variants.map((v: any) => ({
-                size: v.size,
-                color: v.color,
-                colorAm: v.colorAm,
-                sku: v.sku,
-                price: v.price || 0,
-              })),
-            }
-          : undefined,
-      },
-      include: { variants: true },
-    })
-    res.json(style)
+      const variantRows = Array.isArray(variants)
+        ? variants
+            .map((v: any) => ({
+              size: String(v?.size || "").trim(),
+              color: String(v?.color || "Default").trim() || "Default",
+              colorAm: v?.colorAm || null,
+              sku: v?.sku || null,
+              price: v?.price != null ? Number(v.price) : 0,
+            }))
+            .filter((v) => v.size)
+        : []
+
+      const style = await prisma.garmentStyle.create({
+        data: {
+          name,
+          nameAm,
+          sku,
+          category,
+          description,
+          imageUrl,
+          organizationId: getOrgId(req),
+          ...(variantRows.length
+            ? { variants: { create: variantRows } }
+            : {}),
+        },
+        include: { variants: true },
+      })
+      res.json(style)
+    } catch (err: any) {
+      console.error("create style", err)
+      res.status(500).json({ error: err?.message || "Create failed" })
+    }
   }
 )
 
@@ -265,12 +319,45 @@ router.get(
   authenticate,
   requireOrganization,
   async (req: Request, res: Response) => {
-    const orders = await prisma.garmentProductionOrder.findMany({
-      where: { organizationId: getOrgId(req) },
-      include: { style: true, stageLogs: true },
-      orderBy: { createdAt: "desc" },
-    })
-    res.json(orders)
+    try {
+      const orgId = getOrgId(req)
+      const orders = await prisma.garmentProductionOrder.findMany({
+        where: { organizationId: orgId },
+        include: {
+          style: { include: { variants: true } },
+          lines: {
+            include: { style: { include: { variants: true } } },
+            orderBy: { sortOrder: "asc" },
+          },
+          stageLogs: true,
+        },
+        orderBy: { createdAt: "desc" },
+      })
+
+      // Backfill one line for legacy orders
+      for (const o of orders) {
+        if (!o.lines?.length) {
+          await ensureOrderLines(o)
+        }
+      }
+
+      const full = await prisma.garmentProductionOrder.findMany({
+        where: { organizationId: orgId },
+        include: {
+          style: { include: { variants: true } },
+          lines: {
+            include: { style: { include: { variants: true } } },
+            orderBy: { sortOrder: "asc" },
+          },
+          stageLogs: true,
+        },
+        orderBy: { createdAt: "desc" },
+      })
+      res.json(full)
+    } catch (err: any) {
+      console.error(err)
+      res.status(500).json({ error: err?.message || "Failed to load orders" })
+    }
   }
 )
 
@@ -279,55 +366,266 @@ router.post(
   authenticate,
   requireOrganization,
   async (req: Request, res: Response) => {
-    const { styleId, customerName, dueDate, plannedQty, notes } = req.body
-
-    const count = await prisma.garmentProductionOrder.count({
-      where: { organizationId: getOrgId(req) },
-    })
-    const orderNumber = `GO-${String(count + 1).padStart(4, "0")}`
-
-    const order = await prisma.garmentProductionOrder.create({
-      data: {
-        orderNumber,
+    try {
+      const orgId = getOrgId(req)
+      const {
         styleId,
         customerName,
-        dueDate: dueDate ? new Date(dueDate) : null,
+        dueDate,
         plannedQty,
         notes,
-        organizationId: getOrgId(req),
-      },
-      include: { style: true },
-    })
-    res.json(order)
+        lines,
+      } = req.body
+
+      const count = await prisma.garmentProductionOrder.count({
+        where: { organizationId: orgId },
+      })
+      const orderNumber = `GO-${String(count + 1).padStart(4, "0")}`
+
+      // ----- Multi-line (Pass 2) -----
+      if (Array.isArray(lines) && lines.length > 0) {
+        const lineRows = lines
+          .map((l: any, i: number) => ({
+            styleId: String(l.styleId || "").trim(),
+            plannedQty: Number(l.plannedQty) || 0,
+            sizeNote: l.sizeNote
+              ? String(l.sizeNote)
+              : l.notes
+                ? String(l.notes).replace(/^Sizes:\s*/i, "")
+                : null,
+            sortOrder: i,
+          }))
+          .filter((l) => l.styleId && l.plannedQty > 0)
+
+        if (lineRows.length === 0) {
+          return res.status(400).json({
+            error: "Each line needs styleId and plannedQty > 0",
+          })
+        }
+
+        const totalPlanned = lineRows.reduce((s, l) => s + l.plannedQty, 0)
+        const primaryStyleId = lineRows[0].styleId
+
+        const order = await prisma.garmentProductionOrder.create({
+          data: {
+            orderNumber,
+            organizationId: orgId,
+            customerName: customerName || null,
+            dueDate: dueDate ? new Date(dueDate) : null,
+            // keep primary style for old UI that reads order.style
+            styleId: primaryStyleId,
+            plannedQty: totalPlanned,
+            actualQty: 0,
+            notes: notes || null,
+            lines: {
+              create: lineRows.map((l) => ({
+                styleId: l.styleId,
+                plannedQty: l.plannedQty,
+                actualQty: 0,
+                sizeNote: l.sizeNote,
+                sortOrder: l.sortOrder,
+              })),
+            },
+          },
+          include: {
+            style: { include: { variants: true } },
+            lines: {
+              include: { style: { include: { variants: true } } },
+              orderBy: { sortOrder: "asc" },
+            },
+          },
+        })
+        return res.json(order)
+      }
+
+      // ----- Single style (Pass 1, still works) -----
+      if (!styleId) {
+        return res.status(400).json({
+          error: "styleId or lines[] required",
+        })
+      }
+      const pq = Number(plannedQty) || 0
+      if (pq < 1) {
+        return res.status(400).json({ error: "plannedQty must be ≥ 1" })
+      }
+
+      const order = await prisma.garmentProductionOrder.create({
+        data: {
+          orderNumber,
+          organizationId: orgId,
+          styleId,
+          customerName: customerName || null,
+          dueDate: dueDate ? new Date(dueDate) : null,
+          plannedQty: pq,
+          notes: notes || null,
+          lines: {
+            create: [
+              {
+                styleId,
+                plannedQty: pq,
+                actualQty: 0,
+                sizeNote: notes && /Sizes:/i.test(notes)
+                  ? notes.replace(/^Sizes:\s*/i, "").trim()
+                  : null,
+                sortOrder: 0,
+              },
+            ],
+          },
+        },
+        include: {
+          style: { include: { variants: true } },
+          lines: {
+            include: { style: { include: { variants: true } } },
+          },
+        },
+      })
+      res.json(order)
+    } catch (err: any) {
+      console.error("create order", err)
+      res.status(500).json({ error: err?.message || "Create failed" })
+    }
   }
 )
 
 router.patch(
-  "/orders/:id/stage",
+  "/orders/:id",
   authenticate,
   requireOrganization,
   async (req: Request, res: Response) => {
-    const id = getId(req.params.id)
-    const { stage, quantity, note } = req.body
-    const userId = (req as any).user?.id || (req as any).user?.userId
+    try {
+      const orgId = getOrgId(req)
+      const id = getId(req.params.id)
+      const user = (req as any).user
+      if (!isOwnerOrManager(user)) {
+        return res.status(403).json({ error: "Only owner or manager can edit" })
+      }
 
-    const order = await prisma.garmentProductionOrder.update({
-      where: { id },
-      data: {
-        stage,
-        ...(quantity !== undefined ? { actualQty: quantity } : {}),
-        stageLogs: {
-          create: {
-            stage,
-            quantity: quantity || 0,
-            note,
-            createdById: userId,
+      const existing = await prisma.garmentProductionOrder.findFirst({
+        where: { id, organizationId: orgId },
+      })
+      if (!existing) return res.status(404).json({ error: "Order not found" })
+
+      const {
+        customerName,
+        dueDate,
+        notes,
+        styleId,
+        plannedQty,
+        lines,
+      } = req.body
+
+      // --- multi-line replace ---
+      if (Array.isArray(lines) && lines.length > 0) {
+        const lineRows: {
+          styleId: string
+          plannedQty: number
+          actualQty: number
+          sizeNote: string | null
+          sortOrder: number
+        }[] = []
+
+        for (let i = 0; i < lines.length; i++) {
+          const ln = lines[i]
+          const sid = String(ln.styleId || "").trim()
+          const pq = Number(ln.plannedQty)
+          if (!sid || !Number.isFinite(pq) || pq <= 0) {
+            return res.status(400).json({
+              error: "Each line needs styleId and plannedQty > 0",
+            })
+          }
+          const style = await prisma.garmentStyle.findFirst({
+            where: { id: sid, organizationId: orgId },
+          })
+          if (!style) {
+            return res.status(400).json({ error: `Style not found: ${sid}` })
+          }
+          lineRows.push({
+            styleId: sid,
+            plannedQty: Math.floor(pq),
+            actualQty: 0, // reset line progress on full rewrite; or keep old if you prefer
+            sizeNote: ln.sizeNote ? String(ln.sizeNote) : null,
+            sortOrder: i,
+          })
+        }
+
+        const totalPlanned = lineRows.reduce((s, r) => s + r.plannedQty, 0)
+
+        // Keep old line actuals if same styleId (optional soft merge)
+        const oldLines = await prisma.garmentOrderLine.findMany({
+          where: { orderId: id },
+        })
+        for (const row of lineRows) {
+          const prev = oldLines.find((o) => o.styleId === row.styleId)
+          if (prev) row.actualQty = Number(prev.actualQty || 0)
+        }
+        const totalActual = lineRows.reduce((s, r) => s + r.actualQty, 0)
+
+        await prisma.garmentOrderLine.deleteMany({ where: { orderId: id } })
+        await prisma.garmentOrderLine.createMany({
+          data: lineRows.map((r) => ({ ...r, orderId: id })),
+        })
+
+        const order = await prisma.garmentProductionOrder.update({
+          where: { id },
+          data: {
+            customerName:
+              customerName !== undefined
+                ? customerName
+                  ? String(customerName)
+                  : null
+                : undefined,
+            dueDate:
+              dueDate !== undefined
+                ? dueDate
+                  ? new Date(dueDate)
+                  : null
+                : undefined,
+            notes: notes !== undefined ? notes || null : undefined,
+            styleId: lineRows[0].styleId,
+            plannedQty: totalPlanned,
+            actualQty: totalActual,
           },
+          include: {
+            style: { include: { variants: true } },
+            lines: {
+              include: { style: { include: { variants: true } } },
+              orderBy: { sortOrder: "asc" },
+            },
+            stageLogs: true,
+          },
+        })
+        return res.json(order)
+      }
+
+      // --- header-only update (legacy) ---
+      const data: any = {}
+      if (customerName !== undefined)
+        data.customerName = customerName ? String(customerName) : null
+      if (dueDate !== undefined)
+        data.dueDate = dueDate ? new Date(dueDate) : null
+      if (notes !== undefined) data.notes = notes || null
+      if (styleId) data.styleId = styleId
+      if (plannedQty != null && Number(plannedQty) > 0) {
+        data.plannedQty = Math.floor(Number(plannedQty))
+      }
+
+      const order = await prisma.garmentProductionOrder.update({
+        where: { id },
+        data,
+        include: {
+          style: { include: { variants: true } },
+          lines: {
+            include: { style: { include: { variants: true } } },
+            orderBy: { sortOrder: "asc" },
+          },
+          stageLogs: true,
         },
-      },
-      include: { style: true, stageLogs: true },
-    })
-    res.json(order)
+      })
+      res.json(order)
+    } catch (err: any) {
+      console.error(err)
+      res.status(500).json({ error: err?.message || "Update failed" })
+    }
   }
 )
 
@@ -535,6 +833,7 @@ router.get(
   }
 )
 
+// ===================== DAILY REPORTS =====================
 router.post(
   "/daily-reports",
   authenticate,
@@ -543,26 +842,53 @@ router.post(
     try {
       const orgId = getOrgId(req)
       const user = (req as any).user
-      const { orderId, stage, quantity, note, reportDate, updateOrderStage } =
-        req.body
+      const {
+        orderId,
+        lineId,
+        stage,
+        quantity,
+        note,
+        reportDate,
+        updateOrderStage,
+        markComplete,
+        sizeNote,
+      } = req.body
 
-      if (!quantity || Number(quantity) <= 0) {
-        return res.status(400).json({ error: "Quantity is required" })
+      const qty = Number(quantity)
+      if (!Number.isFinite(qty) || qty <= 0) {
+        return res.status(400).json({ error: "quantity must be > 0" })
       }
 
-      const cleanOrderId =
-        orderId && String(orderId).trim() ? String(orderId) : null
-      const cleanStage =
-        stage && String(stage).trim() ? String(stage) : null
+      const cleanOrderId = orderId ? String(orderId) : null
+      const cleanLineId = lineId ? String(lineId) : null
+      const cleanStage = stage ? String(stage) : null
 
+      let order: any = null
       if (cleanOrderId) {
-        const order = await prisma.garmentProductionOrder.findFirst({
+        order = await prisma.garmentProductionOrder.findFirst({
           where: { id: cleanOrderId, organizationId: orgId },
+          include: {
+            lines: { orderBy: { sortOrder: "asc" } },
+            style: true,
+          },
         })
         if (!order) {
           return res.status(404).json({ error: "Order not found" })
         }
+        if (!order.lines?.length) {
+          await ensureOrderLines(order)
+          order = await prisma.garmentProductionOrder.findFirst({
+            where: { id: cleanOrderId },
+            include: { lines: true, style: true },
+          })
+        }
       }
+
+      const sizePart = sizeNote ? String(sizeNote).trim() : ""
+      const fullNote =
+        [note, sizePart ? `Sizes: ${sizePart}` : ""]
+          .filter(Boolean)
+          .join(" · ") || null
 
       const report = await prisma.garmentDailyReport.create({
         data: {
@@ -570,53 +896,77 @@ router.post(
           userId: user?.id || user?.userId || null,
           userName: user?.name || user?.email || "Staff",
           orderId: cleanOrderId,
-          stage: cleanStage as any,
-          quantity: Number(quantity),
-          note: note || null,
+          stage: (cleanStage as any) || null,
+          quantity: qty,
+          note: fullNote,
           reportDate: reportDate ? new Date(reportDate) : new Date(),
         },
         include: {
-          order: { include: { style: true } },
+          order: { include: { style: true, lines: true } },
         },
       })
 
-      if (cleanOrderId) {
-        const allReports = await prisma.garmentDailyReport.findMany({
-          where: { orderId: cleanOrderId },
-          select: { quantity: true },
-        })
-        const totalFinished = allReports.reduce((s, r) => s + r.quantity, 0)
-
-        const updateData: any = {
-          actualQty: totalFinished,
+      if (cleanOrderId && order) {
+        let targetLine =
+          cleanLineId && order.lines
+            ? order.lines.find((l: any) => l.id === cleanLineId)
+            : null
+        if (!targetLine && order.lines?.length === 1) {
+          targetLine = order.lines[0]
         }
 
-        if (updateOrderStage && cleanStage) {
-          updateData.stage = cleanStage
-          updateData.stageLogs = {
-            create: {
-              stage: cleanStage,
-              quantity: Number(quantity),
-              note: note || "From daily report",
-              createdById: user?.id || user?.userId || null,
-            },
-          }
+        if (targetLine) {
+          await prisma.garmentOrderLine.update({
+            where: { id: targetLine.id },
+            data: { actualQty: { increment: qty } },
+          })
+          await refreshOrderTotals(cleanOrderId)
+        } else {
+          await prisma.garmentProductionOrder.update({
+            where: { id: cleanOrderId },
+            data: { actualQty: { increment: qty } },
+          })
         }
 
-        const order = await prisma.garmentProductionOrder.findUnique({
+        const updated = await prisma.garmentProductionOrder.findUnique({
           where: { id: cleanOrderId },
         })
-        if (order && totalFinished >= order.plannedQty) {
-          updateData.stage = "COMPLETED"
-          updateData.status = "COMPLETED"
-        }
+        if (updated) {
+          const planned = Number(updated.plannedQty || 0)
+          const actual = Number(updated.actualQty || 0)
+          const left = Math.max(0, planned - actual)
 
-        await prisma.garmentProductionOrder
-          .update({
-            where: { id: cleanOrderId },
-            data: updateData,
-          })
-          .catch((e) => console.error("Order update failed", e))
+          const updateData: any = {}
+
+          if (updateOrderStage && cleanStage) {
+            if (!(cleanStage === "COMPLETED" && left > 0)) {
+              updateData.stage = cleanStage
+              updateData.stageLogs = {
+                create: {
+                  stage: cleanStage,
+                  quantity: qty,
+                  note: fullNote || "From daily report",
+                  createdById: user?.id || user?.userId || null,
+                },
+              }
+            }
+          }
+
+          if (markComplete && left === 0 && planned > 0) {
+            updateData.stage = "COMPLETED"
+            updateData.status = "COMPLETED"
+          } else if (actual >= planned && planned > 0) {
+            updateData.stage = "COMPLETED"
+            updateData.status = "COMPLETED"
+          }
+
+          if (Object.keys(updateData).length > 0) {
+            await prisma.garmentProductionOrder.update({
+              where: { id: cleanOrderId },
+              data: updateData,
+            })
+          }
+        }
       }
 
       res.json(report)
@@ -1324,11 +1674,13 @@ router.patch(
     try {
       const orgId = getOrgId(req)
       const id = getId(req.params.id)
-      const { name, sku, category } = req.body
+      const { name, sku, category, variants } = req.body
+
       const existing = await prisma.garmentStyle.findFirst({
         where: { id, organizationId: orgId },
       })
       if (!existing) return res.status(404).json({ error: "Not found" })
+
       const updated = await prisma.garmentStyle.update({
         where: { id },
         data: {
@@ -1337,7 +1689,29 @@ router.patch(
           ...(category != null ? { category: String(category) } : {}),
         },
       })
-      res.json(updated)
+
+            if (Array.isArray(variants)) {
+        await prisma.garmentVariant.deleteMany({ where: { styleId: id } })
+        const rows = variants
+          .map((v: any) => ({
+            styleId: id,
+            size: String(v.size || "").trim(),
+            color: String(v.color || "Default").trim() || "Default",
+            colorAm: v.colorAm || null,
+            sku: v.sku || null,
+            price: v.price != null ? Number(v.price) : 0,
+          }))
+          .filter((v) => v.size)
+        if (rows.length > 0) {
+          await prisma.garmentVariant.createMany({ data: rows })
+        }
+      }
+
+      const full = await prisma.garmentStyle.findUnique({
+        where: { id },
+        include: { variants: true, bomItems: { include: { material: true } } },
+      })
+      res.json(full)
     } catch (err: any) {
       console.error(err)
       res.status(500).json({ error: err?.message || "Update failed" })
@@ -1382,6 +1756,39 @@ router.delete(
       res.status(500).json({
         error: err?.message || "Delete failed",
       })
+    }
+  }
+)
+
+// ===================== ORDER DELETE =====================
+
+router.delete(
+  "/orders/:id",
+  authenticate,
+  requireOrganization,
+  async (req: Request, res: Response) => {
+    try {
+      const orgId = getOrgId(req)
+      const id = getId(req.params.id)
+      const user = (req as any).user
+      if (!isOwnerOrManager(user)) {
+        return res.status(403).json({ error: "Only owner or manager can delete" })
+      }
+
+      const existing = await prisma.garmentProductionOrder.findFirst({
+        where: { id, organizationId: orgId },
+      })
+      if (!existing) return res.status(404).json({ error: "Order not found" })
+
+      await prisma.garmentDailyReport.deleteMany({ where: { orderId: id } })
+      await prisma.garmentDefect.deleteMany({ where: { orderId: id } })
+      await prisma.garmentStageLog.deleteMany({ where: { orderId: id } })
+      await prisma.garmentProductionOrder.delete({ where: { id } })
+
+      res.json({ ok: true })
+    } catch (err: any) {
+      console.error(err)
+      res.status(500).json({ error: err?.message || "Delete failed" })
     }
   }
 )

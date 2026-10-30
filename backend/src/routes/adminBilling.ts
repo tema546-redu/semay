@@ -1,7 +1,7 @@
 import { Router } from "express"
 import { z } from "zod"
 import { prisma } from "../lib/prisma.js"
-import { planDurationDays, PlanKey } from "../lib/pricing.js"
+import { planDurationDays, PlanKey, getPrice } from "../lib/pricing.js"
 import { authenticate } from "../middleware/auth.js"
 
 const router = Router()
@@ -242,6 +242,81 @@ router.get("/usage", async (req, res) => {
     })
   } catch (e: any) {
     res.status(500).json({ error: e.message || "Failed" })
+  }
+})
+
+/** Admin: change business type + update subscription amount from pricing */
+router.post("/change-type", async (req, res) => {
+  if (!check(req, res)) return
+  try {
+    const body = z
+      .object({
+        organizationId: z.string().min(1),
+        businessType: z.enum([
+          "RESTAURANT",
+          "CAFE",
+          "BAKERY",
+          "HOTEL",
+          "SUPERMARKET",
+          "GYM",
+          "SCHOOL",
+          "UNIVERSITY",
+          "PHARMACY",
+          "SALON",
+          "LIBRARY",
+          "GARMENT",
+          "STORE",
+          "OTHER",
+        ]),
+        updatePricing: z.boolean().optional().default(true),
+      })
+      .parse(req.body)
+
+    const org = await prisma.organization.findUnique({
+      where: { id: body.organizationId },
+      include: {
+        subscription: true,
+        _count: { select: { branches: true } },
+      },
+    })
+    if (!org) return res.status(404).json({ error: "Organization not found" })
+
+    const branchCount = Math.max(1, (org as any)._count?.branches || 1)
+
+    const updated = await prisma.organization.update({
+      where: { id: body.organizationId },
+      data: {
+        type: body.businessType as any,
+        typeSwitchedAt: new Date(),
+      },
+    })
+
+    let subscription = org.subscription
+    let newAmount: number | null = subscription ? Number(subscription.amount) : null
+
+    if (body.updatePricing && subscription) {
+      const plan = subscription.plan as PlanKey
+      newAmount = getPrice(body.businessType, plan, branchCount)
+      subscription = await prisma.subscription.update({
+        where: { organizationId: body.organizationId },
+        data: { amount: newAmount },
+      })
+    }
+
+    res.json({
+      message: "Type updated",
+      organizationId: updated.id,
+      previousType: org.type,
+      type: updated.type,
+      typeSwitchedAt: updated.typeSwitchedAt,
+      plan: subscription?.plan ?? null,
+      amount: newAmount,
+      branchCount,
+      status: subscription?.status ?? null,
+    })
+  } catch (e: any) {
+    if (e.name === "ZodError") return res.status(400).json({ error: e.errors })
+    res.status(400).json({ error: e.message || "Failed" })
   }
 })
 

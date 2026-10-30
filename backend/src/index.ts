@@ -30,6 +30,10 @@ import salonRouter from "./routes/salon"
 import publicSalonRouter from "./routes/publicSalon.js"
 import garmentRoutes from "./routes/garment.js"
 import storeRoutes from "./routes/store.js"
+import adminDelalaRoutes from "./routes/adminDelala.js"
+import adminAnalyticsRoutes from "./routes/adminAnalytics.js"
+import publicDelalaRoutes from "./routes/publicDelala.js"
+import adminContactsRoutes from "./routes/adminContacts.js"
 
 const app = express()
 const PORT = Number(process.env.PORT) || 3001
@@ -111,7 +115,10 @@ app.use("/api/public", publicMenuRoutes)
 app.use("/api/salon", publicSalonRouter)
 app.use("/api/garment", garmentRoutes)
 app.use("/api/store", storeRoutes)
-
+app.use("/api/admin/delalas", adminDelalaRoutes)
+app.use("/api/admin/analytics", adminAnalyticsRoutes)
+app.use("/api/public", publicDelalaRoutes) 
+app.use("/api/admin/contacts", adminContactsRoutes)
 // 404 handler
 app.use((_req, res) => {
   res.status(404).json({ error: "Not found" })
