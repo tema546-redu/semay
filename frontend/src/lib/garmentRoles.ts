@@ -31,17 +31,14 @@ export type NavItem = {
   staffOk?: boolean
 }
 
-/** Full admin menu (owner + manager) — paths must match App.tsx */
+/** Full admin menu — daily work only; rest lives in Settings */
 export const GARMENT_ADMIN_NAV: NavItem[] = [
   { to: "/garment", en: "Home", am: "መነሻ", icon: "Home", staffOk: false },
   { to: "/garment/orders", en: "Production", am: "ምርት", icon: "Scissors", staffOk: true },
-  { to: "/garment/inventory", en: "Inventory", am: "ክምችት", icon: "Package", staffOk: true },
   { to: "/garment/styles", en: "Styles", am: "ዓይነቶች", icon: "Shirt", adminOnly: true },
   { to: "/garment/staff", en: "Staff", am: "ሰራተኞች", icon: "Users", adminOnly: true },
-  { to: "/garment/quality", en: "Quality", am: "ጥራት", icon: "AlertTriangle", staffOk: true },
   { to: "/garment/daily", en: "Daily", am: "ዕለታዊ", icon: "ClipboardList", staffOk: true },
-  { to: "/garment/money-leaks", en: "Money", am: "ገንዘብ", icon: "Wallet", adminOnly: true },
-  { to: "/garment/reports", en: "Reports", am: "ሪፖርት", icon: "BarChart3", adminOnly: true },
+  { to: "/garment/store", en: "Store", am: "ስቶር", icon: "Package" },
 ]
 
 /** Staff-only short menu */

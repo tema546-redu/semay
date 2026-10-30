@@ -29,8 +29,8 @@ export default function Help() {
             {isAm ? "ፈጣን ጅማሮ" : "Quick start"}
           </h2>
           <ol className="text-sm text-semay-600 list-decimal pl-4 space-y-1.5">
-            <li>{isAm ? "ምናሌ ላይ ምግቦችን ጨምሩ" : "Add items on Menu"}</li>
-            <li>{isAm ? "ሰራተኛ ግብዣ ከ Staff" : "Invite waiters from Staff"}</li>
+            <li>{isAm ? "Menu ላይ ምግቦችን ጨምሩ" : "Add items on Menu"}</li>
+            <li>{isAm ? "ሰራተኛ invite ከ Staff" : "Invite waiters from Staff"}</li>
             <li>{isAm ? "POS ላይ ትዕዛዝ → ኩሽና" : "Take orders on POS → Kitchen"}</li>
             <li>{isAm ? "ሪፖርት በመዝጊያ ሰዓት" : "Check Reports at closing"}</li>
           </ol>

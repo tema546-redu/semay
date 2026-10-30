@@ -3,10 +3,11 @@ import { useTranslation } from "react-i18next"
 import { Link, useParams, useNavigate } from "react-router-dom"
 import { garmentApi } from "../../lib/api"
 import GarmentLayout from "../../components/GarmentLayout"
-import { ArrowLeft, Plus } from "lucide-react"
+import { ArrowLeft, Plus, MoreVertical, Pencil, Trash2 } from "lucide-react"
 import { offlineMutate, isOnline } from "../../lib/garmentOffline"
 import { garmentUrl } from "../../lib/garmentApiBase"
 
+const [menuOpen, setMenuOpen] = useState(false)
 const STAGES = [
   "CUTTING",
   "SEWING",
@@ -15,6 +16,21 @@ const STAGES = [
   "PACKING",
   "COMPLETED",
 ]
+
+function stageLabel(s: string, isAm: boolean) {
+  const map: Record<string, { en: string; am: string }> = {
+    PLANNED: { en: "Planned", am: "ታቅዷል" },
+    CUTTING: { en: "Cutting", am: "መቁረጥ" },
+    SEWING: { en: "Sewing", am: "መስፋት" },
+    QUALITY: { en: "Quality", am: "ጥራት" },
+    FINISHING: { en: "Finishing", am: "ማጠናቀቅ" },
+    PACKING: { en: "Packing", am: "ማሸግ" },
+    COMPLETED: { en: "Completed", am: "ተጠናቋል" },
+  }
+  const m = map[String(s || "").toUpperCase()]
+  if (!m) return s || "—"
+  return isAm ? m.am : m.en
+}
 
 export default function GarmentOrderDetail() {
   const { id } = useParams()
@@ -26,6 +42,7 @@ export default function GarmentOrderDetail() {
   const [reports, setReports] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
 
   const load = async () => {
     if (!id) return
@@ -40,13 +57,16 @@ export default function GarmentOrderDetail() {
       }
       setOrder(ord || null)
 
-      // reports for this order — filter from daily list or dedicated API
       let reps: any[] = []
       if (typeof (garmentApi as any).orderReports === "function") {
         reps = await (garmentApi as any).orderReports(id)
       } else {
-        const allR = await garmentApi.dailyReports({ range: "month" }).catch(() => [])
-        reps = (allR || []).filter((r: any) => r.orderId === id || r.order?.id === id)
+        const allR = await garmentApi
+          .dailyReports({ range: "month" })
+          .catch(() => [])
+        reps = (allR || []).filter(
+          (r: any) => r.orderId === id || r.order?.id === id
+        )
       }
       setReports(reps)
     } catch (e) {
@@ -60,14 +80,43 @@ export default function GarmentOrderDetail() {
     load()
   }, [id])
 
+  const lines: any[] = order?.lines?.length
+    ? order.lines
+    : order?.styleId
+      ? [
+          {
+            id: "legacy",
+            style: order.style,
+            styleId: order.styleId,
+            plannedQty: order.plannedQty,
+            actualQty: order.actualQty,
+            sizeNote:
+              order.notes && /Sizes:/i.test(order.notes)
+                ? order.notes.replace(/^Sizes:\s*/i, "").trim()
+                : null,
+          },
+        ]
+      : []
+
   const planned = Number(order?.plannedQty || 0)
   const done = Number(order?.actualQty || 0)
   const left = Math.max(0, planned - done)
   const displayDone = Math.min(done, planned || done)
   const extra = done > planned ? done - planned : 0
 
+  const title =
+    String(order?.customerName || "").trim() || order?.orderNumber || "—"
+
   const setStage = async (stage: string) => {
     if (!id) return
+    if (stage === "COMPLETED" && left > 0) {
+      alert(
+        isAm
+          ? `ቀሪ ${left} አለ — ማጠናቀቅ አይቻልም`
+          : `Cannot complete: ${left} pieces still left`
+      )
+      return
+    }
     setBusy(true)
     try {
       const result = await offlineMutate({
@@ -79,11 +128,10 @@ export default function GarmentOrderDetail() {
       if (result.queued) {
         alert(isAm ? "ኦፍላይን ተቀምጧል" : "Saved offline")
       } else if (!result.ok) {
-        // fallback common API
-        if (typeof (garmentApi as any).updateOrderStage === "function") {
-          await (garmentApi as any).updateOrderStage(id, stage)
-        } else {
-          alert(result.error || "Failed")
+        try {
+          await garmentApi.updateStage(id, { stage })
+        } catch (err: any) {
+          alert(err?.message || result.error || "Failed")
         }
       }
       if (isOnline()) await load()
@@ -123,21 +171,77 @@ export default function GarmentOrderDetail() {
   return (
     <GarmentLayout>
       <div className="p-4 md:p-6 max-w-xl space-y-4 pb-24">
+        {/* Header — customer first */}
         <div className="flex items-center gap-3">
           <button type="button" onClick={() => navigate(-1)}>
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <div>
-            <h1 className="font-semibold text-lg">{order.orderNumber}</h1>
+          <div className="min-w-0 flex-1">
+            <h1 className="font-semibold text-lg truncate">{title}</h1>
             <p className="text-sm text-semay-500">
-              {order.style?.category ? `${order.style.category} · ` : ""}
-              {order.style?.name}
-              {order.customerName ? ` · ${order.customerName}` : ""}
+              {/* same subtitle as before */}
+              {lines.length > 1
+                ? isAm
+                  ? `${lines.length} ዓይነቶች`
+                  : `${lines.length} styles`
+                : lines[0]?.style?.name || order.style?.name || "—"}
+              {String(order.customerName || "").trim()
+                ? ` · ${order.orderNumber}`
+                : ""}
             </p>
+          </div>
+
+          <div className="relative shrink-0">
+            <button
+              type="button"
+              className="p-2 rounded-lg border border-semay-200 bg-white"
+              onClick={() => setMenuOpen((v) => !v)}
+            >
+              <MoreVertical className="w-4 h-4" />
+            </button>
+            {menuOpen && (
+              <div className="absolute right-0 mt-1 w-40 bg-white border border-semay-200 rounded-xl shadow-lg z-20 py-1">
+                <button
+                  type="button"
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-semay-50"
+                  onClick={() => {
+                    setMenuOpen(false)
+                    navigate("/garment/orders", {
+                      state: { editOrderId: order.id },
+                    })
+                  }}
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                  {isAm ? "አርትዕ" : "Edit"}
+                </button>
+                <button
+                  type="button"
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left text-red-600 hover:bg-red-50"
+                  onClick={async () => {
+                    setMenuOpen(false)
+                    if (
+                      !window.confirm(
+                        isAm ? "ትዕዛዝ ይጥፋ?" : "Delete this order?"
+                      )
+                    )
+                      return
+                    try {
+                      await (garmentApi as any).deleteOrder(order.id)
+                      navigate("/garment/orders")
+                    } catch (err: any) {
+                      alert(err?.message || "Delete failed")
+                    }
+                  }}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  {isAm ? "ሰርዝ" : "Delete"}
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* BIG Done / Left — packing truth */}
+        {/* Order totals */}
         <div className="bg-white border border-semay-200 rounded-2xl p-5">
           <div className="grid grid-cols-3 gap-3 text-center">
             <div>
@@ -185,11 +289,86 @@ export default function GarmentOrderDetail() {
             />
           </div>
           <p className="text-xs text-semay-500 mt-2 text-center">
-            {isAm ? "ደረጃ" : "Stage"}: <b>{order.stage}</b>
+            {isAm ? "ደረጃ" : "Stage"}:{" "}
+            <b>
+              {left > 0 && String(order.stage) === "COMPLETED"
+                ? isAm
+                  ? "በከፊል"
+                  : "Partial"
+                : stageLabel(order.stage, isAm)}
+            </b>
             {order.status === "DELAYED" && (
               <span className="text-danger"> · DELAYED</span>
             )}
           </p>
+        </div>
+
+        {/* Lines — each style */}
+        <div className="bg-white border border-semay-200 rounded-2xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-semay-100 font-medium">
+            {isAm ? "የልብስ መስመሮች" : "Product lines"}
+          </div>
+          {lines.length === 0 ? (
+            <p className="p-4 text-sm text-semay-500 text-center">
+              {isAm ? "መስመር የለም" : "No lines"}
+            </p>
+          ) : (
+            lines.map((ln: any, i: number) => {
+              const lp = Number(ln.plannedQty || 0)
+              const la = Number(ln.actualQty || 0)
+              const ll = Math.max(0, lp - la)
+              return (
+                <div
+                  key={ln.id || i}
+                  className="px-4 py-3 border-b border-semay-50 last:border-0"
+                >
+                  <div className="flex justify-between gap-2 items-start">
+                    <div className="min-w-0">
+                      <div className="font-medium text-semay-900">
+                        {ln.style?.name || "—"}
+                      </div>
+                      {ln.style?.category && (
+                        <div className="text-xs text-semay-500">
+                          {ln.style.category}
+                        </div>
+                      )}
+                      {ln.sizeNote && (
+                        <div className="text-xs text-semay-600 mt-1">
+                          {isAm ? "መጠን" : "Sizes"}: {ln.sizeNote}
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-right text-xs shrink-0 tabular-nums">
+                      <div className="text-emerald-700 font-semibold">
+                        {Math.min(la, lp || la)} / {lp}
+                      </div>
+                      <div
+                        className={
+                          ll > 0
+                            ? "text-amber-600 font-medium"
+                            : "text-emerald-600"
+                        }
+                      >
+                        {isAm ? "ቀሪ" : "Left"} {ll}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-2 h-1.5 rounded-full bg-semay-100 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full ${
+                        ll > 0 ? "bg-amber-500" : "bg-emerald-500"
+                      }`}
+                      style={{
+                        width: `${
+                          lp > 0 ? Math.min(100, Math.round((la / lp) * 100)) : 0
+                        }%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              )
+            })
+          )}
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -218,25 +397,37 @@ export default function GarmentOrderDetail() {
             {isAm ? "ደረጃ ቀይር" : "Update stage"}
           </div>
           <div className="flex flex-wrap gap-2">
-            {STAGES.map((s) => (
-              <button
-                key={s}
-                type="button"
-                disabled={busy}
-                onClick={() => setStage(s)}
-                className={`text-xs px-2.5 py-1.5 rounded-full border ${
-                  order.stage === s
-                    ? "bg-semay-900 text-white border-semay-900"
-                    : "border-semay-200 bg-white"
-                }`}
-              >
-                {s}
-              </button>
-            ))}
+            {STAGES.map((s) => {
+              const blockComplete = s === "COMPLETED" && left > 0
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  disabled={busy || blockComplete}
+                  title={
+                    blockComplete
+                      ? isAm
+                        ? "ቀሪ ካለ ማጠናቀቅ አይቻልም"
+                        : "Cannot complete while pieces left"
+                      : undefined
+                  }
+                  onClick={() => setStage(s)}
+                  className={`text-xs px-2.5 py-1.5 rounded-full border ${
+                    order.stage === s
+                      ? "bg-semay-900 text-white border-semay-900"
+                      : blockComplete
+                        ? "border-semay-100 text-semay-300 cursor-not-allowed"
+                        : "border-semay-200 bg-white"
+                  }`}
+                >
+                  {s}
+                </button>
+              )
+            })}
           </div>
         </div>
 
-        {/* Reasons history — packing answer */}
+        {/* Reports + reasons */}
         <div className="bg-white border border-semay-200 rounded-2xl overflow-hidden">
           <div className="px-4 py-3 border-b border-semay-100 font-medium">
             {isAm ? "ሪፖርቶች + ምክንያቶች" : "Reports + reasons"}
@@ -244,7 +435,7 @@ export default function GarmentOrderDetail() {
           {reports.length === 0 ? (
             <p className="p-6 text-sm text-center text-semay-500">
               {isAm
-                ? "እስካሁን ሪፖርት የለም — ቀሪ ለምን እንደሆነ አይታይም"
+                ? "እስካሁን ሪፖርት የለም"
                 : "No reports yet — no reasons recorded"}
             </p>
           ) : (
@@ -255,7 +446,7 @@ export default function GarmentOrderDetail() {
               >
                 <div className="flex justify-between gap-2">
                   <span className="font-medium">
-                    +{r.quantity} pcs · {r.stage}
+                    +{r.quantity} pcs · {stageLabel(r.stage, isAm)}
                   </span>
                   <span className="text-xs text-semay-400">
                     {new Date(r.createdAt || r.reportDate).toLocaleString()}
@@ -277,8 +468,8 @@ export default function GarmentOrderDetail() {
         {left > 0 && (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
             {isAm
-              ? `${left} ቁራጭ ገና አልተጠናቀቀም። ከላይ ያሉት ምክንያቶች ማሸጊያ ላይ ያሳያሉ።`
-              : `${left} pieces still left. Reasons above explain gaps at packing.`}
+              ? `${left} ቁራጭ ገና አልተጠናቀቀም። ከላይ ያሉት መስመሮች እና ምክንያቶች ማሸጊያ ላይ ያሳያሉ።`
+              : `${left} pieces still left. Lines and reasons above help at packing.`}
           </div>
         )}
       </div>

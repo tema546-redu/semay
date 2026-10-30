@@ -278,7 +278,7 @@ export default function Dashboard() {
             </h2>
             <p className="text-semay-500 max-w-md mx-auto">
               {isAm
-                ? "መረጃዎ ደህንነቱ የተጠበቀ ነው። ከላይ ያሉትን ምናሌዎች ይጠቀሙ።"
+                ? "መረጃዎ ደህንነቱ የተጠበቀ ነው። ከላይ ያሉትን Menuዎች ይጠቀሙ።"
                 : "Your data is safe. Use the menu on the left to work day to day."}
             </p>
           </div>

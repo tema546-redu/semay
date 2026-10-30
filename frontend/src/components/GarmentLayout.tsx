@@ -23,12 +23,6 @@ import {
 } from "lucide-react"
 import { useState } from "react"
 
-/**
- * REPLACE: src/components/GarmentLayout.tsx
- * Role-based sidebar + mobile nav
- * Manager = same as Owner | Staff = short menu
- */
-
 const ICONS: Record<string, any> = {
   Home,
   Scissors,
@@ -69,18 +63,27 @@ export default function GarmentLayout({
   const label = (en: string, am: string) => (isAm ? am : en)
 
   const NavList = ({ mobile = false }: { mobile?: boolean }) => (
-    <nav className={`flex ${mobile ? "flex-row overflow-x-auto gap-1 px-2 py-2" : "flex-col gap-1 p-3"}`}>
+    <nav
+      className={`flex ${
+        mobile
+          ? "flex-row overflow-x-auto gap-1 px-2 py-2"
+          : "flex-col gap-1 p-3"
+      }`}
+    >
       {items.map((item) => {
         const Icon = ICONS[item.icon] || Home
         return (
           <NavLink
             key={item.to}
             to={item.to}
+            end={item.to === "/garment" || item.to === "/garment/dashboard"}
             onClick={() => setOpen(false)}
             className={({ isActive }) =>
               mobile
                 ? `flex flex-col items-center min-w-[64px] px-2 py-1 rounded-lg text-[10px] ${
-                    isActive ? "text-semay-900 font-semibold" : "text-semay-500"
+                    isActive
+                      ? "text-semay-900 font-semibold"
+                      : "text-semay-500"
                   }`
                 : `flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm ${
                     isActive
@@ -99,13 +102,12 @@ export default function GarmentLayout({
 
   return (
     <div className="min-h-screen bg-semay-50/80 flex">
-      {/* Desktop sidebar */}
       <aside className="hidden md:flex md:w-56 lg:w-60 flex-col border-r border-semay-200 bg-white">
         <div className="p-4 border-b border-semay-100">
-         <Link
-   to={staffOnly ? "/garment/staff-home" : "/garment"}
-  className="flex items-center gap-2"
->
+          <Link
+            to={staffOnly ? "/garment/staff-home" : "/garment"}
+            className="flex items-center gap-2"
+          >
             <div className="w-8 h-8 rounded-lg bg-semay-900 text-white flex items-center justify-center text-sm font-bold">
               S
             </div>
@@ -137,28 +139,6 @@ export default function GarmentLayout({
         </div>
 
         <div className="p-3 border-t border-semay-100 space-y-1">
-          {/* Language */}
-          <div className="flex gap-1 mb-2">
-            <button
-              type="button"
-              onClick={() => i18n.changeLanguage("en")}
-              className={`flex-1 text-xs py-1.5 rounded-lg border ${
-                !isAm ? "bg-semay-900 text-white border-semay-900" : "border-semay-200"
-              }`}
-            >
-              EN
-            </button>
-            <button
-              type="button"
-              onClick={() => i18n.changeLanguage("am")}
-              className={`flex-1 text-xs py-1.5 rounded-lg border ${
-                isAm ? "bg-semay-900 text-white border-semay-900" : "border-semay-200"
-              }`}
-            >
-              አማ
-            </button>
-          </div>
-
           {admin && (
             <Link
               to="/garment/settings"
@@ -182,9 +162,7 @@ export default function GarmentLayout({
         </div>
       </aside>
 
-      {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Mobile top bar */}
         <header className="md:hidden flex items-center justify-between px-4 py-3 bg-white border-b border-semay-200">
           <div className="font-semibold text-semay-900 truncate">
             {organization?.name || "Semaiy"}
@@ -197,28 +175,13 @@ export default function GarmentLayout({
         {open && (
           <div className="md:hidden bg-white border-b border-semay-200 p-3 space-y-2">
             <NavList />
-            <div className="flex gap-1 px-2">
-              <button
-                type="button"
-                onClick={() => i18n.changeLanguage("en")}
-                className="flex-1 text-xs py-2 border rounded-lg"
-              >
-                EN
-              </button>
-              <button
-                type="button"
-                onClick={() => i18n.changeLanguage("am")}
-                className="flex-1 text-xs py-2 border rounded-lg"
-              >
-                አማ
-              </button>
-            </div>
             {admin && (
               <Link
                 to="/garment/settings"
                 onClick={() => setOpen(false)}
-                className="block px-3 py-2 text-sm"
+                className="flex items-center gap-2 px-3 py-2 text-sm text-semay-700"
               >
+                <Settings className="w-4 h-4" />
                 {isAm ? "ቅንብሮች" : "Settings"}
               </Link>
             )}
@@ -232,9 +195,10 @@ export default function GarmentLayout({
           </div>
         )}
 
-        <main className="flex-1 pb-20 md:pb-6">{children ?? <Outlet />}</main>
+        <main className="flex-1 pb-20 md:pb-6">
+          {children ?? <Outlet />}
+        </main>
 
-        {/* Mobile bottom nav */}
         <div className="md:hidden fixed bottom-0 inset-x-0 bg-white border-t border-semay-200 z-40">
           <NavList mobile />
         </div>

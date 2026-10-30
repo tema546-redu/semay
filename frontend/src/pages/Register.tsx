@@ -9,18 +9,14 @@ const BUSINESS_TYPES = [
   { value: "CAFE", label: "Café", labelAm: "ካፌ" },
   { value: "RESTAURANT", label: "Restaurant", labelAm: "ሬስቶራንት" },
   { value: "BAKERY", label: "Bakery", labelAm: "ቤከሪ" },
-  { value: "HOTEL", label: "Hotel", labelAm: "ሆቴል" },
+  
   { value: "GYM", label: "Gym & Fitness", labelAm: "ጂም" },
-  { value: "SUPERMARKET", label: "Supermarket", labelAm: "ሱፐርማርኬት" },
+  
   { value: "PHARMACY", label: "Pharmacy", labelAm: "ፋርማሲ" },
   { value: "SALON", label: "Salon", labelAm: "ሳሎን" },
   { value: "STORE", label: "Store / Shop", labelAm: "ሱቅ" },
-  { value: "SCHOOL", label: "School", labelAm: "ትምህርት ቤት" },
-  { value: "UNIVERSITY", label: "University", labelAm: "ዩኒቨርሲቲ" },
-  { value: "LIBRARY", label: "Library", labelAm: "ቤተ መጻሕፍት" },
-  { value: "SUBCITY", label: "Subcity / Government", labelAm: "ክፍለ ከተማ" },
+
    { value: "GARMENT", label: "Garment / Clothing", labelAm: "ልብስ ስፌት" },
-  { value: "OTHER", label: "Other", labelAm: "ሌላ" },
   
  
 ]

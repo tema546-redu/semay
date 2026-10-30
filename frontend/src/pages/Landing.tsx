@@ -1,5 +1,6 @@
-import { useState } from "react"
-import { Link } from "react-router-dom"
+import { useState, useEffect } from "react"
+import { track } from "../lib/analytics"
+import { Link, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import {
   ArrowRight,
@@ -12,14 +13,44 @@ import {
   Coffee,
 } from "lucide-react"
 
-const GUIDE_VIDEO_ID: string = "p4Iy8KDQ75s"
+
+const GUIDE_VIDEO_ID = "p4Iy8KDQ75s"
+const LEARN_CODE = "semay-family-siblings"
 
 export default function Landing() {
   const { i18n } = useTranslation()
+  const navigate = useNavigate()
   const isAm = i18n.language === "am"
+
   const [showVideo, setShowVideo] = useState(false)
+  const [showLearnGate, setShowLearnGate] = useState(false)
+  const [learnCode, setLearnCode] = useState("")
+  const [learnErr, setLearnErr] = useState("")
 
   const switchLang = () => i18n.changeLanguage(isAm ? "en" : "am")
+
+  const openLearnGate = () => {
+    setLearnErr("")
+    setLearnCode("")
+    setShowLearnGate(true)
+  }
+
+  const submitLearnCode = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (learnCode.trim() === LEARN_CODE) {
+      try {
+        localStorage.setItem("semay_learn_ok", "1")
+      } catch {
+        /* ignore */
+      }
+      setShowLearnGate(false)
+      navigate("/learn")
+    } else {
+      setLearnErr(isAm ? "የተሳሳተ ኮድ" : "Wrong code")
+    }
+  }
+
+  useEffect(() => { track("landing_open", "/") }, [])
 
   return (
     <div className="min-h-svh flex flex-col bg-[#f3f1ec] text-stone-800">
@@ -43,7 +74,7 @@ export default function Landing() {
               <Globe className="w-3.5 h-3.5" />
               {isAm ? "EN" : "አማ"}
             </button>
-                        <Link
+            <Link
               to="/login"
               className="text-sm text-stone-600 hover:text-stone-900 px-2 py-1.5"
             >
@@ -95,9 +126,7 @@ export default function Landing() {
                 {isAm ? "ለንግድዎ" : "For business"}
               </h2>
               <p className="text-sm text-stone-500 mb-3 leading-relaxed">
-                {isAm
-                  ? "POS፣ ኩሽና፣ ሰራተኛ፣ ሪፖርት።"
-                  : "POS, kitchen, staff, and reports."}
+                {isAm ? "POS፣ ኩሽና፣ ሰራተኛ፣ ሪፖርት።" : "POS, kitchen, staff, and reports."}
               </p>
               <span className="inline-flex items-center gap-1 text-sm font-medium text-stone-900">
                 {isAm ? "ይመዝገቡ" : "Sign up"}
@@ -125,9 +154,14 @@ export default function Landing() {
             </h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {[
-                { icon: UtensilsCrossed, en: "Restaurant", am: "ሬስቶራንት", to: "/register?type=RESTAURANT" },
+                {
+                  icon: UtensilsCrossed,
+                  en: "Restaurant",
+                  am: "ሬስቶራንት",
+                  to: "/register?type=RESTAURANT",
+                },
                 { icon: Coffee, en: "Café", am: "ካፌ", to: "/register?type=CAFE" },
-                { icon: Building2, en: "More", am: "ሌሎች", to: "/register" },
+                { icon: Building2, en: "More", am: "ሌሎች", to: "/more" },
               ].map((b) => {
                 const Icon = b.icon
                 return (
@@ -152,35 +186,53 @@ export default function Landing() {
         <div className="max-w-3xl mx-auto px-5 py-10">
           <p className="font-semibold text-stone-900">Semaiy · ሰማይ</p>
           <p className="text-sm text-stone-600 mt-1 max-w-md leading-relaxed">
-            {isAm
-              ? "በኢትዮጵያ ለተሰሩ ንግዶች።"
-              : "Built in Ethiopia for real businesses."}
+            {isAm ? "በኢትዮጵያ ለተሰሩ ንግዶች።" : "Built in Ethiopia for real businesses."}
           </p>
           <p className="text-sm text-stone-600 mt-4 space-x-2">
-            <Link to="/register" className="hover:text-stone-900 underline-offset-2 hover:underline">
+            <Link
+              to="/register"
+              className="hover:text-stone-900 underline-offset-2 hover:underline"
+            >
               {isAm ? "ነጻ ሙከራ" : "Free trial"}
             </Link>
             <span className="text-stone-400">·</span>
-            <Link to="/login" className="hover:text-stone-900 underline-offset-2 hover:underline">
+            <Link
+              to="/login"
+              className="hover:text-stone-900 underline-offset-2 hover:underline"
+            >
               {isAm ? "ግባ" : "Sign in"}
             </Link>
           </p>
           <p className="text-sm text-stone-600 mt-2">
-            <a href="tel:0953352271" className="hover:text-stone-900">
-              0953 352 271
+            <a href="tel:0916422465" className="hover:text-stone-900">
+              0916422465
             </a>
             <span className="mx-2 text-stone-400">·</span>
-            <a href="https://t.me/semaii_app" target="_blank" rel="noreferrer" className="hover:text-stone-900">
+            <a
+              href="https://t.me/semaii_app"
+              target="_blank"
+              rel="noreferrer"
+              className="hover:text-stone-900"
+            >
               Telegram
             </a>
           </p>
           <p className="mt-8 pt-6 border-t border-stone-300/60 text-xs text-stone-500">
             © {new Date().getFullYear()} Semaiy
+            <button
+              type="button"
+              onClick={openLearnGate}
+              className="ml-1 text-stone-400/80 hover:text-stone-500 cursor-default select-none"
+              aria-label=" "
+              title=""
+            >
+              © 
+            </button>
           </p>
         </div>
       </footer>
 
-            {showVideo && (
+      {showVideo && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
           <div className="bg-white rounded-xl w-full max-w-lg overflow-hidden shadow-lg">
             <div className="flex items-center justify-between px-4 py-3 border-b border-stone-100">
@@ -217,6 +269,42 @@ export default function Landing() {
               </Link>
             </div>
           </div>
+        </div>
+      )}
+
+      {showLearnGate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30">
+          <form
+            className="bg-white rounded-xl w-full max-w-xs p-5 shadow-lg border border-stone-200"
+            onSubmit={submitLearnCode}
+          >
+            <p className="text-sm font-medium text-stone-900 mb-3">
+              {isAm ? "ኮድ" : "Code"}
+            </p>
+            <input
+              type="password"
+              value={learnCode}
+              onChange={(e) => setLearnCode(e.target.value)}
+              className="w-full border border-stone-200 rounded-lg px-3 py-2 text-sm mb-2"
+              autoFocus
+            />
+            {learnErr && <p className="text-xs text-red-600 mb-2">{learnErr}</p>}
+            <div className="flex gap-2 mt-2">
+              <button
+                type="button"
+                onClick={() => setShowLearnGate(false)}
+                className="flex-1 border border-stone-200 text-sm py-2 rounded-lg"
+              >
+                {isAm ? "ሰርዝ" : "Cancel"}
+              </button>
+              <button
+                type="submit"
+                className="flex-1 bg-stone-900 text-white text-sm py-2 rounded-lg"
+              >
+                OK
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

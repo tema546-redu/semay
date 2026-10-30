@@ -67,7 +67,7 @@ import GarmentDashboard from "./pages/garment/GarmentDashboard"
 import GarmentInventory from "./pages/garment/GarmentInventory"
 import GarmentOrders from "./pages/garment/GarmentOrders"
 import GarmentStyles from "./pages/garment/GarmentStyles"
-import GarmentOrderDetail from "./pages/garment/GarmentOrderDetail"
+
 import GarmentBOM from "./pages/garment/GarmentBOM"
 import GarmentStaff from "./pages/garment/GarmentStaff"
 import GarmentSettings from "./pages/garment/GarmentSettings"
@@ -83,6 +83,19 @@ import StoreReceive from "./pages/store/StoreReceive"
 import StoreOut from "./pages/store/StoreOut"
 import StoreReports from "./pages/store/StoreReports"
 import StoreSettings from "./pages/store/StoreSettings"
+import GarmentStore from "./pages/garment/GarmentStore"
+import GarmentStoreItems from "./pages/garment/GarmentStoreItems"
+import GarmentStoreReceive from "./pages/garment/GarmentStoreReceive"
+import GarmentStoreOut from "./pages/garment/GarmentStoreOut"
+import GarmentStoreReports from "./pages/garment/GarmentStoreReports"
+import LearnHome from "./pages/learn/LearnHome"
+import LearnGrade from "./pages/learn/LearnGrade"
+import LearnSubject from "./pages/learn/LearnSubject"
+import LearnChapter from "./pages/learn/LearnChapter"
+import GarmentSupportChat from "./pages/garment/GarmentSupportChat"
+import RestaurantSupportChat from "./pages/restaurant/RestaurantSupportChat"
+import PublicHub from "./pages/public/PublicHub"
+import Delala from "./pages/public/Delala"
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, loading } = useAuth()
@@ -179,6 +192,8 @@ export default function App() {
       <Route path="/bakery/expenses" element={<ProtectedApp><BakeryExpenses /></ProtectedApp>} />
       <Route path="/bakery/settings" element={<ProtectedApp><BakerySettings /></ProtectedApp>} />
       <Route path="/bakery/reports" element={<ProtectedApp><BakeryReports /></ProtectedApp>} />
+      <Route path="/more" element={<PublicHub />} />
+      <Route path="/delala" element={<Delala />} />
 
       <Route path="/pharmacy" element={<ProtectedApp><PharmacyDashboard /></ProtectedApp>} />
       <Route path="/pharmacy/products" element={<ProtectedApp><PharmacyProducts /></ProtectedApp>} />
@@ -206,7 +221,7 @@ export default function App() {
       <Route path="/garment/inventory" element={<ProtectedApp><GarmentInventory /></ProtectedApp>} />
       <Route path="/garment/orders" element={<ProtectedApp><GarmentOrders /></ProtectedApp>} />
       <Route path="/garment/styles" element={<ProtectedApp><GarmentStyles /></ProtectedApp>} />
-      <Route path="/garment/orders/:id" element={<ProtectedApp><GarmentOrderDetail /></ProtectedApp>} />
+      
       <Route path="/garment/styles/:styleId/bom" element={<ProtectedApp><GarmentBOM /></ProtectedApp>} />
       <Route path="/garment/staff" element={<ProtectedApp><GarmentStaff /></ProtectedApp>} />
       <Route path="/garment/settings" element={<ProtectedApp><GarmentSettings /></ProtectedApp>} />
@@ -226,6 +241,24 @@ export default function App() {
   element={
     <ProtectedApp>
       <GarmentStaffHome />
+    </ProtectedApp>
+  }
+/>
+<Route path="/garment/store" element={<ProtectedApp><GarmentStore /></ProtectedApp>} />
+<Route path="/garment/store/items" element={<ProtectedApp><GarmentStoreItems /></ProtectedApp>} />
+<Route path="/garment/store/receive" element={<ProtectedApp><GarmentStoreReceive /></ProtectedApp>} />
+<Route path="/garment/store/out" element={<ProtectedApp><GarmentStoreOut /></ProtectedApp>} />
+<Route path="/garment/store/reports" element={<ProtectedApp><GarmentStoreReports /></ProtectedApp>} />
+<Route path="/learn" element={<LearnHome />} />
+<Route path="/learn/:grade" element={<LearnGrade />} />
+<Route path="/learn/:grade/:subjectId" element={<LearnSubject />} />
+<Route path="/learn/:grade/:subjectId/:chapterId" element={<LearnChapter />} />
+<Route path="/restaurant/support" element={<RestaurantSupportChat />} />
+<Route
+  path="/garment/support"
+  element={
+    <ProtectedApp>
+      <GarmentSupportChat />
     </ProtectedApp>
   }
 />

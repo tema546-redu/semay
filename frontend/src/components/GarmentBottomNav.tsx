@@ -16,7 +16,7 @@ export default function GarmentBottomNav() {
   ]
 
   return (
-    <div className="fixed bottom-#ifdef 0 left-0 right-0 bg-white border-t border-semay-200 safe-bottom z-50">
+    <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-semay-200 safe-bottom z-50">
       <div className="flex justify-around items-center h-16">
         {items.map((item) => {
           const active = location.pathname === item.path

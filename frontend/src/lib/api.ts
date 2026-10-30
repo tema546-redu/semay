@@ -753,17 +753,39 @@ export const garmentApi = {
   },
   addDailyReport: (data: {
     orderId?: string
+    lineId?: string
     stage?: string
     quantity: number
     note?: string
     reportDate?: string
     updateOrderStage?: boolean
+    markComplete?: boolean
+    sizeNote?: string
   }) =>
     request("/api/garment/daily-reports", {
       method: "POST",
       body: JSON.stringify(data),
     }),
+    updateDailyReport: (
+    id: string,
+    data: {
+      quantity?: number
+      note?: string
+      stage?: string
+      sizeNote?: string
+      updateOrderStage?: boolean
+      markComplete?: boolean
+    }
+  ) =>
+    request(`/api/garment/daily-reports/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
 
+  deleteDailyReport: (id: string) =>
+    request(`/api/garment/daily-reports/${id}`, {
+      method: "DELETE",
+    }),
   reports: (params?: { date?: string; range?: string }) => {
     const q = new URLSearchParams()
     if (params?.date) q.set("date", params.date)
@@ -856,6 +878,26 @@ export const garmentApi = {
     }),
   deleteStyle: (id: string) =>
     request(`/api/garment/styles/${id}`, { method: "DELETE" }),
+      updateOrder: (id: string, data: any) =>
+    request(`/api/garment/orders/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+
+  deleteOrder: (id: string) =>
+    request(`/api/garment/orders/${id}`, { method: "DELETE" }),
+}
+
+export const supportApi = {
+  /** Owner: full thread for their org */
+  messages: () => request<any[]>("/api/feedback/chat/mine"),
+
+  /** Owner: send a message */
+  send: (body: string) =>
+    request<any>("/api/feedback/chat", {
+      method: "POST",
+      body: JSON.stringify({ body }),
+    }),
 }
 
 export const storeApi = {

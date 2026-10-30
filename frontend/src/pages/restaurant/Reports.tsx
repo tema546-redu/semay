@@ -190,8 +190,7 @@ function printOrderReceipt(opts: {
   <div class="sep"></div>
   <div><b>Payment:</b> ${escapeHtml(String(method))}${isCash ? " · CASH" : ""}</div>
   <div class="sep"></div>
-  <div class="c" style="font-size:9px">Prices include VAT 15% · Management receipt</div>
-  <div class="c" style="font-size:9px">*** NON-FISCAL — not ERCA device ***</div>
+  
   <img class="qr" src="${qr}" alt="QR"/>
   <div class="c"><b>${escapeHtml(code)}</b></div>
   <div class="c">Thank you · semaiy.netlify.app</div>

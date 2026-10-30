@@ -207,24 +207,17 @@ export default function RestaurantDashboard() {
     { to: "/kds/kitchen", icon: <ChefHat className="w-4 h-4" />, label: "Kitchen display" },
     { to: "/kds/bar", icon: <ChefHat className="w-4 h-4" />, label: "Bar display" },
     { to: "/menu", icon: <BookOpen className="w-4 h-4" />, label: "Menu" },
-    { to: "/reservations", icon: <CalendarDays className="w-4 h-4" />, label: "Reservations" },
-    { to: "/staff", icon: <Users className="w-4 h-4" />, label: "Staff" },
-    { to: "/tables", icon: <Table2 className="w-4 h-4" />, label: isAm ? "ጠረጴዛ" : "Tables" },
-    { to: "/stock", icon: <Package className="w-4 h-4" />, label: isAm ? "ክምችት" : "Stock" },
     { to: "/reports", icon: <FileText className="w-4 h-4" />, label: "Reports" },
     { to: "/restaurant/settings", icon: <Settings className="w-4 h-4" />, label: "Settings" },
-    { to: "/billing", icon: <CreditCard className="w-4 h-4" />, label: "Billing" },
     { to: "/ai", icon: <Sparkles className="w-4 h-4" />, label: "Semay AI" },
-    { to: "/help", icon: <HelpCircle className="w-4 h-4" />, label: isAm ? "እገዛ" : "Help" } ,
-    { to: "/profile", icon: <UserCircle className="w-4 h-4" />, label: isAm ? "መገለጫ" : "Profile" },
   ]
 
   const footerNav = [
     { to: "/dashboard", label: "Home", icon: <LayoutDashboard className="w-5 h-5" /> },
     { to: "/pos", label: "POS", icon: <UtensilsCrossed className="w-5 h-5" /> },
     { to: "/stock", label: isAm ? "ክምችት" : "Stock", icon: <Package className="w-5 h-5" /> },
-    { to: "/help", label: isAm ? "እገዛ" : "Help", icon: <HelpCircle className="w-5 h-5" /> },
-    { to: "/profile", label: "Profile", icon: <UserCircle className="w-5 h-5" /> },
+    { to: "/reports", label: isAm ? "ሪፖርት" : "Reports", icon: <FileText className="w-5 h-5" /> },
+    { to: "/restaurant/settings", label: isAm ? "ቅንብሮች" : "Settings", icon: <Settings className="w-5 h-5" /> },
   ]
 
   const isActive = (to: string) => path === to || (to !== "/dashboard" && path.startsWith(to))
@@ -417,7 +410,7 @@ export default function RestaurantDashboard() {
               }}
               className="text-[10px] px-2 py-1.5 rounded-full bg-white/10 text-white/90 hover:bg-white/20"
             >
-              Enable alerts
+              
             </button>
 
             <Link
